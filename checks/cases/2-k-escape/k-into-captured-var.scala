@@ -8,6 +8,7 @@ object Keep:
   def kept[A](p: A ! Choose): List[A] ! Pure =
     var saved: List[Any] = Nil
     handle(p, Handler.control[Choose, Pure, A, List[A]](a => pure(List(a)))(
-      [X] => (op: Choose[X], k: Continuation[X, Pure, List[A]]) => // error: Note that capability `saved` cannot flow into capture set {}
+      // error: Note that capability `saved` cannot flow into capture set {}
+      [X] => (op: Choose[X], k: Continuation[X, Pure, List[A]]) =>
         saved = k :: saved
         k.unwind.map(_ => Nil)))
