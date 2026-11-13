@@ -365,8 +365,8 @@ evidence). They are one now: okay-audit holds the shared parts, and each of the 
 
 The whole-program check is `okay-safe-whole 4`: messages of the ambient APIs are okay-audit's now (`clock: the time
 now is nondeterminism — replay breaks — use a Clock effect (…, okay.safe.std.Clock)`); the cases expecting the old
-wording follow it. The policy's own entries are what only TASTy shows. okay-audit comes from `~/.m2` (okay's
-`okayAudit/publishM2`) until it is released.
+wording follow it. The policy's own entries are what only TASTy shows. okay-audit is released (0.1.0, okay's Maven
+repository on GitHub Pages, https://okay-effects.github.io/okay/maven).
 
 ## What changed (2026-11-13, third pass)
 
