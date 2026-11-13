@@ -13,8 +13,11 @@ value: built, it does nothing; run, it performs effects only by asking operation
 a program, reach a client, the clock, the console, a thread or a file except through a handler the host made; a
 sensitive effect is answered only under its audit; a handler's state never leaves its clause readable; its
 continuations and clauses are pure, so resuming a continuation twice is the same computation twice, never a replay.
-A deployment proves it was checked: the gate seals what it compiled and checked, and the kernel's `Launch` gives the
-application's entry its one runner only when the seal, the JVM flag and the module path match. Not covered:
+A program holds only data, effects and ids: real resources — clients, connections — live in handlers, captured
+there by the host, and the whole-program check refuses a program that holds one, or that is answered or given
+anything but first-order data (the boundary rule, an insurance against the host's mistakes). A deployment proves
+it was checked: the gate seals what it compiled and checked, and the kernel's `Launch` gives the application's
+entry its one runner only when the seal, the JVM flag and the module path match. Not covered:
 non-termination and resource exhaustion, exceptions the runtime throws by itself, the trusted base — the kernel's
 machine and launcher, the allowlisted standard library, the JVM —, the host, which runs programs and is trusted, not
 checked, and who wrote a seal: it is not signed.
@@ -24,8 +27,8 @@ checked, and who wrote a seal: it is not signed.
 | module | what |
 |---|---|
 | `core` | the kernel, `okay.safe`: rows, programs, handlers, the machine, the audit, the standard effects. Programs' API in safe mode; `Host.scala` (capture checked) and `Unchecked.scala` for the host only; `Launch.scala`, the entry, which verifies the seal |
-| `example` | an application, `okay.bank`: a sensitive `Bank` effect and a payroll in safe mode, the real client held by one handler at the host's edge, audited |
-| `whole` | the whole-program check: reads every TASTy file of a program and its dependencies, holds every reference to a default-deny allowlist |
+| `example` | an application, `okay.bank`: a sensitive `Bank` effect and a payroll in safe mode; a payment service over HTTP on the loopback (`PaymentService`, logging what it receives), a real `java.net.http.HttpClient` made by the host and held by the Bank handler alone, audited |
+| `whole` | the whole-program check: reads every TASTy file of a program and its dependencies, holds every reference to a default-deny allowlist, and every type a program holds to the boundary rule (data, effects, ids; first-order data where values cross from the host) |
 | `gate` | the gate: compiles with the required flags, runs the whole-program check, seals a deployment (`app.jar` with its seal, the kernel as a named module, `app.args`) |
 | `agent` | a gate for agents' code: a program over a log, the clock and the bank compiled, checked, then run with the host's handlers — the bank behind an audit that asks a `Guard` effect, the policy a handler in okay-guard's shape |
 | `checks` | the guarantees tested: `cases/` compiled by the compiler itself (the exact error expected, or the whole-program finding), and run-time checks (NestedRun, JPMS, Unsafe), the sealed deployment (SealTest) |
@@ -58,7 +61,20 @@ object App extends Entry:
 
 A handler that holds an authority (a client, a connection) is made in the host with `Authority`; a sensitive effect
 (`given Sensitive[Bank]`) is handled only by `handleAudited` under `audit(interceptor)` — see
-`example/src/main/scala/okay/bank`.
+`example/src/main/scala/okay/bank`, where the client is a real `HttpClient` to a payment service on the loopback.
+
+Resources a program opens and closes — files, sessions — stay with the handler too, in a `Table`; the program is
+given an `Id[K]`, opaque and made only by the kernel, and gives it back:
+
+```scala
+enum Files[X]:
+  case Open(name: String) extends Files[Id[Files]]
+  case Read(file: Id[Files]) extends Files[String]
+  case Close(file: Id[Files]) extends Files[Unit]
+```
+
+The host's handler keeps `Table[Files, File]`: `add` on `Open`, `get`/`remove` on the rest — a closed id, or
+another table's, is found in none, and the handler refuses the operation (`core/src/test/.../ResourcesTest.scala`).
 
 The whole-program check of an application, its host package apart:
 

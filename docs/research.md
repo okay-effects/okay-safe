@@ -25,7 +25,10 @@ read-only, so inert), and a runner is given once by the kernel's `Launch` to the
 Adding a **whole-program check of the TASTy** (module `whole`: default-deny allowlist, transitive over the program
 and every dependency given with it, no `throw`/`try`, no `@assumeSafe` outside safe mode, no class in the kernel's
 packages, capture checking and explicit nulls read from each unit's TASTy attributes) closes every hole found here
-that is visible in the code. Adding **JPMS** (the kernel a named module) and the JVM flag
+that is visible in the code. Its **boundary rule** reads types as well as names: a program holds only data, effects
+and ids — the real resources stay in handlers, captured there by the host — and where values cross from the host
+(an effect's answer, an argument the host gives a program) only first-order data crosses: no client, no function, no
+`Any` ("The boundary", below). Adding **JPMS** (the kernel a named module) and the JVM flag
 `--sun-misc-unsafe-memory-access=deny` closes the split package and `Unsafe` at run time as well. And a **seal**
 (module `gate`) makes the configuration part of the artifact: the gate compiles with the required flags, runs the
 check, and records it all with every file's hash; the kernel's `Launch` refuses to start what does not match it, a
@@ -46,7 +49,9 @@ who built it.
 > a handler holding an authority (a client, the clock) is made only by the host; a sensitive effect is answered only
 > under its audit; a runner exists only in the entry `Launch` gave it to, after verifying the deployment's seal;
 > a handler's state never leaves its clause readable; continuations and clauses are pure functions, so a
-> continuation resumed twice is the same computation twice — never a replay, since `k` is immutable data. Excluded:
+> continuation resumed twice is the same computation twice — never a replay, since `k` is immutable data; a program
+> holds no value of a type outside data, effects, ids, its own classes and the policy's, and is answered and given
+> only first-order data (the boundary rule; one gap, "The boundary"). Excluded:
 > non-termination, stack or heap exhaustion, exceptions thrown by the runtime itself (arithmetic, a partial function
 > of the standard library), and whatever the trusted base does.
 
@@ -71,11 +76,11 @@ The guarantee above is the nightly's.
 
 | file | compiled | who may name it |
 |---|---|---|
-| `Effects.scala`, `Audit.scala`, `std/*` | safe mode + separation checking | everyone |
+| `Effects.scala`, `Audit.scala`, `Id.scala`, `std/*` | safe mode + separation checking | everyone (`Id`'s maker: the kernel) |
 | `Rows.scala`, `Machine.scala`, `Messages.scala`, `Branches.scala` | plain, `@assumeSafe` (trusted base) | everyone; the machine is `private[safe]` |
 | `Host.scala` — `Runner` (made by the kernel only), `Entry`, `run`, `step`, `NestedRun` | capture checked, not safe mode, not `@assumeSafe` | the host only |
 | `Launch.scala` — the application's entry and the seal's verification | no checks; `private[safe]`: the JVM starts it, no code names it | nobody: `Main-Class` |
-| `Unchecked.scala` — `Authority` (handlers holding a capability, the system clock, `pull`) | no checks | the host only |
+| `Unchecked.scala` — `Authority` (handlers holding a capability, the system clock, `pull`), `Table` (a handler's resources by id) | no checks | the host only |
 
 The split of the host into a capture-checked part (`Host.scala`) and an unchecked part (`Unchecked.scala`) is what
 lets the host's own code be capture checked — a host continuation that captures the runner or the client does not
@@ -100,10 +105,12 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest, SealTest), or its prog
 | 2 | `k` into a global variable | CC: a class with a `var` must be `Stateful`/`Mutable` | — | — | k-into-global-var |
 | 2 | `k` to another thread / a future | SM: `Thread`, `Future`, `ExecutionContext` | WP: not allowlisted | — | k-to-another-thread |
 | 2 | `k` returned after its handler returned | allowed by design: `k` is immutable data | — | resumed thrice, prefix ran once | k-returned-is-a-value; RuntimeTest 2 |
+| 2 | `k` resumed twice past an `Open`: the resource is the handler's, not the path's | allowed by design | — | one table for every path: the open ran once, a close on one path is a close for the next; nothing replayed | ResourcesTest |
 | 3 | cell kept in a captured variable | CC (nightly only) | — | — | cell-into-var |
 | 3 | cell made, or its state written, outside the kernel | access: `private[safe]` | — | — | cell-made-outside |
 | 3 | cell read or written through a read-only reference | CC: `Cannot call update method get/set` — both are update methods | — | — | cell-escaped-is-read-only |
 | 3 | cell given away as an answer, read later | CC: it escapes read-only, and a read-only cell is inert: `Cannot call update method get` | — | — | cell-as-answer |
+| 3 | cell given away as an answer, kept, never read | compiles | WP: a cell is no data an effect answers with | — | cell-as-answer-refused-whole |
 | 3 | cell given away typed exclusive (`Leak[Cell[Int]^]`), written later | CC: `any … is not included in the allowed capture set` | — | — | cell-as-exclusive-answer |
 | 3 | cell's state through `package okay.safe` | — | WP: kernel's package | JPMS: split package refused | cell-through-the-kernels-package; RuntimeTest JPMS |
 | 3 | cell's state by `LazyVals.objCAS` | CC: a cell is no pure `Object` | WP | `--sun-misc-unsafe-memory-access=deny` | cell-by-lazyvals |
@@ -115,7 +122,21 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest, SealTest), or its prog
 | 4 | handler put where the audit should be | rows: `is not in the row` | — | — | handled-without-its-audit |
 | 4 | program makes the authority-holding handler | SM: `Authority` | WP | — | handler-made-in-the-program |
 | 4 | `Plain[Bank]` forged in `package okay.safe` | — | WP: kernel's package | JPMS | plain-forged-in-the-kernels-package |
-| 4 | positive: audited application, client reached only by its handler | compiles | clean (host apart) | refused transfer never reaches the client | the-application; WholeTest; RuntimeTest 4 |
+| 4 | host gives a program the raw `HttpClient` — the one its Bank handler holds — as a parameter | **— (SM checks no parameter's type, and takes its instance members as checked)** | WP: the type held; the host's call given it | — | raw-client-as-a-parameter |
+| 4 | the raw client as a field of the program's own case class | — | WP: the field's type; `Session.apply` given it; `Greet.hello` given a session that holds it | — | raw-client-in-a-field |
+| 4 | the raw client as the answer of the program's own effect (`extends Net[HttpClient]`) | SM: it reads a parent's type arguments | (WP: the answer) | — | raw-client-as-an-answer |
+| 4 | the raw client as the answer of the kernel's `Reader` (`Reader.run(client)`) | **— (SM reads no type argument)** | WP: the type held; the word's answer | — | raw-client-as-a-readers-answer |
+| 4 | the raw client as `Any`: given to `describe(x: Any)`; an effect answered `Any`; a type test against the client's class | — | WP: the argument's type at the host's call; `Any` is no answer; the pattern's type | — | raw-client-as-any |
+| 4 | a host's `() => String` capturing the client: an argument; the answer of the program's effect; `State`'s answer | **— (CC does not track a Java object: the lambda is believed pure)** | WP: no function at the boundary | — | host-function-capturing-the-client |
+| 4 | a host-built program (`Int ! Pure`, its binds the host's lambdas) given to a program's function | — | WP: `Comp` is no data | — | host-gives-a-program-a-program |
+| 4 | a program's class neither final nor sealed, given by the host (a host's subclass may override it) | — | WP | — | open-class-at-the-boundary |
+| 4 | the host's `Table` of resources given to a program, read past the handler | **— (SM: neither the type nor its members)** | WP: the type; `okay.safe.Table` denied | — | table-given-to-a-program |
+| 4 | an `Id` forged: `Id.make`, a number, a cast | access: `private[safe]`; typer: opaque; SM: cast | — | — | id-forged, id-forged-by-a-cast |
+| 4 | a closed id used, closed twice; another table's id | — | — | the handler: no such id, a failure of the program | ResourcesTest |
+| 4 | **conservative**: the program's own lambdas chosen among by `Choose` | compiles | WP: a word answered with a function | — | own-lambdas-chosen-refused |
+| 4 | **not refused**: a program-made `Any => String` applied by the host to the client | — | **— (the call's static target is `Function1.apply`, a library's)** | — | not-refused-host-applies-a-programs-function |
+| 4 | positive: the program's own lambdas; data across the boundary — primitives, `BigDecimal`, options, eithers, tuples, immutable collections, `Instant`, final case classes, enums | compiles | clean | — | data-across-the-boundary; host-function-capturing-the-client (`twice`) |
+| 4 | positive: audited application over HTTP, the client reached only by its handler | compiles | clean (host apart) | the service receives what passed; a refused transfer never reaches it | the-application; WholeTest; RuntimeTest 4 (two); SealTest |
 | 5 | console, `System.*` time/env/props/exit, `sys.*`, `UUID.randomUUID`, `Thread`, `java.io`, `java.nio.file`, `scala.io`, `java.net`, `java.util.Random`, `Runtime` | SM | WP | — | refused-by-safe-mode |
 | 5 | `scala.util.Random`, `Math.random`, `java.time.*.now`, `Clock.systemUTC`, `scala.util.Properties` (env, home), `Integer.getInteger`, `coverage.Invoker` (writes a file), `Object.wait`, `synchronized` | **— (assumed safe), even in pure continuations** | WP | — | assumed-safe-by-safe-mode |
 | 6 | global `var` | CC | — | — | global-var |
@@ -156,8 +177,8 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest, SealTest), or its prog
 | 12 | agent: global mutable state | CC | — | — | global-state |
 | 12 | agent: `java.time.Instant.now`, `scala.util.Random`, `throw`, a unit in `okay.bank.host` | — | WP | — | java-time, random, throws, kernel-package |
 | 12 | agent: no safe import | SM: the gate's own file cannot name it | (WP: not compiled in safe mode) | — | no-import |
-| 12 | agent: a transfer over the limit; to a new payee | compiles, passes the gate | — | the guard: blocked, the bank never asked; asked and approved: passed | over-the-limit, new-payee; AgentTest |
-| 12 | positive: balance, log, a transfer the guard passes | compiles | clean | runs, audited | good; AgentTest |
+| 12 | agent: a transfer over the limit; to a new payee | compiles, passes the gate | — | the guard: blocked, the payment service received nothing; asked and approved: passed, and received | over-the-limit, new-payee; AgentTest |
+| 12 | positive: balance, log, a transfer the guard passes | compiles | clean | runs, audited, over HTTP: the service received its three requests | good; AgentTest |
 
 ## Why each mechanism stops where it does
 
@@ -181,7 +202,8 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest, SealTest), or its prog
   `scala.runtime.coverage.Invoker`.
 - **The whole-program check** reads the TASTy of every program unit and dependency handed to it: a default-deny
   allowlist (`whole/.../Policy.scala`), its own reading of every term reference, `new`, annotation, `throw` and `try`
-  — it trusts nothing the compiler assumed. Its limits: it needs TASTy (a Java or Scala 2 dependency is only ever
+  — it trusts nothing the compiler assumed —, and of every type a program holds and is given (the boundary rule,
+  below). Its limits: it needs TASTy (a Java or Scala 2 dependency is only ever
   *named*, and every name of it must be allowlisted); it trusts the standard library's and the JDK's allowlisted
   members to do what they say; it requires the `import language.experimental.safe` in the file (a
   `-language:experimental.safe` flag leaves no trace in TASTy); it does not see code the compiler generates after
@@ -194,9 +216,9 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest, SealTest), or its prog
 1. **Totality.** Divergence (`def loop: Int ! R = loop`), stack and heap exhaustion, arithmetic exceptions, a
    standard-library partial function (`List.head` on `Nil`), `MatchError`: not effects the types say. The kernel runs
    in constant stack for binds, but a program may still build an unbounded value.
-2. **A cell still escapes — inert.** `cell-as-answer` compiles up to the read: the program holds the cell's
-   identity (`eq`, `hashCode`), no state. Refusing the escape itself would need the answer type of every effect a
-   stateful handler takes to be checked for cells (a macro, as `Plain` is) — not done.
+2. **A cell still escapes the compiler — inert.** `cell-as-answer` compiles up to the read: the program holds the
+   cell's identity (`eq`, `hashCode`), no state. The whole-program check now refuses the escape itself: an effect's
+   answer must be data, and a cell is not (cell-as-answer-refused-whole). The compiler alone still lets it go.
 3. **The trusted base**: the machine and rows (`@assumeSafe`, plain Scala), `Launch` and its seal verification, the
    standard library behind the allowlist, the JVM. The audit is as good as the kernel's code that enforces it.
 4. **The host.** Running programs and giving authorities is the host's; host code can be capture checked (and here
@@ -216,6 +238,64 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest, SealTest), or its prog
    gate's host, as the bank's is, is the step left.
 7. **Experimental compiler.** Safe mode, capture checking and separation checking are experimental in a nightly;
    their soundness is not proven, and changes between versions (3.10.1 vs. the nightly) show it.
+8. **The boundary is read from types.** The rule sees what a program declares, infers and references, what its
+   effects answer, and what a host unit gives a function or a class of the program — by the static target of the
+   call. A function the program made and handed out, applied by the host to a client, passes: its target is
+   `Function1.apply` (not-refused-host-applies-a-programs-function). A host's own subclass of an immutable
+   collection's trait passes as that collection (the type is read, not the value's class). A host that is not
+   inspected — not given to the check — is not read at all. And it is conservative where it cannot know whose
+   handler answers: a word answered with a function is refused even when the program chose among its own lambdas
+   (own-lambdas-chosen-refused).
+
+## The boundary
+
+**The principle.** Real resources — clients, connections, files — live only in handlers, captured by them on the
+host. A program gets data, effects, and, for resources it opens and closes, opaque ids. There is no `Guarded`
+wrapper to pass a resource into a program safely: nothing legit passes a resource to a program, so nothing has to.
+The bank shows it: `BankHost` makes a `java.net.http.HttpClient`, gives it to `BankClient` (its API
+`private[host]`), and the Bank handler — made by `Authority`, behind the audit and, for agents, the guard — is
+the one place that calls it; the payroll asks `Bank.Transfer(...)`, data. The payment service on the loopback logs
+what it receives: the good payroll's three requests are there, a transfer over the limit is not (RuntimeTest 4,
+AgentTest, SealTest).
+
+**Why a check, if nothing legit does it.** Insurance against the host's mistake. The compiler does not refuse it:
+safe mode checks no parameter's type and takes a parameter's instance members as checked, so a program in safe mode
+given a raw `HttpClient` compiles, and could call it (`client.send` is an instance member); capture checking does not
+track Java objects, so a host's `() -> String` that captures the client is believed pure. The whole-program check
+adds two readings of types (`whole/.../Whole.scala`, `held` and `data`):
+
+- **What a program holds.** Every type a program unit declares (vals, defs, parameters, fields, results, type
+  aliases), every type the compiler inferred, every type argument and pattern type test, and the type of every
+  reference and application — decomposed through applied types, tuples, unions and intersections, refinements,
+  functions and methods. Each class in it must be the program's own, the kernel's (not denied: `Runner`, `Table`,
+  `Authority`, `Machine` are), on the policy's allowlist, or in its `data` list. A client of the JDK's, a class of
+  the host's: a finding, with the file, the line and the type. Abstract type parameters pass: what they stand for is
+  checked where they are given.
+- **What crosses from the host: first-order data.** An effect's answers — the last type argument of every class of
+  the program that extends an effect (`case Balance(...) extends Bank[Long]`), and the answer of every `Word[E, X]`
+  the program declares or asks — and every argument and type argument a host unit gives a function or a class of
+  the program. Data is: primitives, `String`, `BigInt`, `BigDecimal`, `Unit`; options, eithers, tuples and the
+  immutable collections (not `LazyList`: its thunks are its maker's code) of data; the program's or the kernel's
+  classes that are final or sealed (enums, final case classes, objects), with no `var`, whose fields are data,
+  recursively; the policy's `data` (`java.time.Instant`…, the kernel's `Id`, and the evidence of rows the host
+  passes with every call: `In`, `Split`, `Sub`, …). Not data: a function of any kind (a host's lambda may hold an
+  untracked client: IO in disguise), a program (`Comp`: its binds are lambdas), a cell, `Any`, and a class a host
+  may subclass.
+
+**`Any`.** Inside a program, of its own values, `Any` is allowed: a `List[Any]` of its own numbers is harmless. At
+the boundary it is not data. Nothing can be done with an `Any` without a cast (refused by safe mode) or a type test
+(a test against a type it may not hold is refused by the rule) — but `toString`, `equals` and `hashCode` are
+members of `Any`, so `s"$x"`, `x == y` and a `Set` of them reach the value's own code, a host's class's. The same
+holds for an abstract type parameter, which is why the host's type arguments are held to the rule of data.
+
+**Ids.** A resource a program opens by name and uses by reference is the handler's, in a `Table[K, T]`
+(`Unchecked.scala`, the host's); the program gets an `Id[K]` (`Id.scala`): opaque, made only by the kernel
+(`private[safe]`), not a number, not castable (id-forged, id-forged-by-a-cast). The handler finds the resource by
+id, or finds none — closed, or another table's (ids are unique in the JVM) — and refuses the operation: a failure of
+the program, an effect. With a handler that resumes many times (multi-shot), the table is not the path's: it holds
+the world, and a connection is not copied. One table serves every path: an `Open` before the paths split ran once
+(the paths share the file); one path's `Close` closes it for the next, whose use is refused; an `Open` after the
+split opens one each. Nothing is replayed (ResourcesTest). The host closes what is left: `Table.drain()`.
 
 ## The sealed deployment
 
@@ -244,10 +324,11 @@ gate compiles it with the required flags beside its own safe-mode file
 `GateEntry.program: String ! Tools = Task.program`
 (so the compiler fixes the type), checks the whole of it with a policy that adds the bank's and the agent's API and
 closes their packages and hosts, and only then loads it and runs it: the log kept, the system's clock, the bank's
-client behind `Guard.bank` — an audit whose clause asks the `Guard` effect for a decision on each call, as okay-guard
-sees a call (a tool's name and its arguments). The host answers `Guard` with a handler: here rules in okay-guard's
-shape (`block bank.transfer amount > 500 : over the limit`, `ask …`, `pass *`, the first that matches decides);
-okay-guard itself — its page, its person in the loop, its journal — would be another handler of the same effect.
+client — HTTP to the payment service on the loopback — behind `Guard.bank`: an audit whose clause asks the `Guard`
+effect for a decision on each call, as okay-guard sees a call (a tool's name and its arguments). The host answers
+`Guard` with a handler: here rules in okay-guard's shape (`block bank.transfer amount > 500 : over the limit`,
+`ask …`, `pass *`, the first that matches decides); okay-guard itself — its page, its person in the loop, its
+journal — would be another handler of the same effect.
 
 ```
 sbt "agent/run agent/programs/good.scala"         # passed the gate (compiled in ~1 s, checked in ~0.1 s), ran
@@ -259,6 +340,18 @@ Compile time per program (AgentTest, one JVM, the compiler warm after the first)
 by the compiler costs no check. Of `agent/programs`: three pass the gate (one runs; two run and are blocked by the
 guard before the bank is asked, and one of them passes when the ask is approved), sixteen are refused, each with the
 reason in the matrix (row 12).
+
+## What changed (2026-11-13, third pass)
+
+- **The boundary rule** in the whole-program check (version `okay-safe-whole 3`): types read, not only names; an
+  effect's answers and what the host gives a program held to first-order data. It also reads the enum companions
+  the compiler makes (they were skipped as synthetic, and with them the enums' cases), refuses a cell given away as
+  an answer (it was refused only when read), and names empty-package classes without `<empty>`. The policy gains a
+  `data` list, part of its hash.
+- **Ids**: `Id[K]` and `Table[K, T]` in the kernel; `Files` in ResourcesTest.
+- **The bank over HTTP**: `PaymentService` (`com.sun.net.httpserver`, on the loopback, a log of what it received) and
+  a real `HttpClient` in `BankClient`, made by the host, held by the handler; the agents' gate runs its programs
+  against it (`sbt "agent/run agent/programs/good.scala"` prints what the service received).
 
 ## What changed (2026-11-13, second pass)
 
