@@ -34,3 +34,40 @@ object Authority:
     run(handle(p, Handler.control[std.Emit % T, Pure, A, LazyList[T]](_ => pure(LazyList.empty))(
       [X] => (op: std.Emit[T, X], k: Continuation[X, Pure, LazyList[T]]) => op match
         case std.Emit.Send(value) => pure(value #:: run(k(()))))))
+
+/** A HANDLER'S TABLE OF RESOURCES: what a program opens, kept here — the host's — and given to the program as an
+ * `Id` (Id.scala). A handler made by `Authority` holds the table: `Open` adds the real resource and answers its id;
+ * `Read(id)`, `Close(id)` find it, or find none — a closed id, another table's — and the handler refuses the
+ * operation (a failure of the program, an effect: never the resource, never a forged one).
+ *
+ * IT IS NOT THE PATH'S: a handler's `Cell` belongs to the path, as the program's state does, but a table holds the
+ * world — a connection is not copied when a continuation is resumed twice. So under a handler that resumes many
+ * times (`Choose`) every path sees one table: what one path opened the next may use, and what one path closed is
+ * closed for the next. Nothing is replayed: `Open` ran once, where it was asked, before the paths split. The host
+ * closes what is left when the run is over: `drain`. */
+final class Table[K <: AnyKind, T]:
+  private val held = java.util.concurrent.ConcurrentHashMap[Long, T]()
+
+  /** `resource` kept: its id, new */
+  def add(resource: T): Id[K] =
+    val id = Table.next.incrementAndGet()
+    held.put(id, resource): Unit
+    Id.make(id)
+
+  /** the resource of `id`; none when it was closed, or is not of this table */
+  def get(id: Id[K]): Option[T] = Option(held.get(id.number))
+
+  /** the resource of `id`, taken out: none when it was closed already, or is not of this table */
+  def remove(id: Id[K]): Option[T] = Option(held.remove(id.number))
+
+  /** how many are open */
+  def size: Int = held.size
+
+  /** every resource still open, taken out: for the host to close when the run is over */
+  def drain(): List[T] =
+    val all = scala.jdk.CollectionConverters.MapHasAsScala(held).asScala.keys.toList.sorted
+    all.flatMap(n => Option(held.remove(n)))
+
+object Table:
+  /** ids are numbered across every table of the JVM: an id is in one table at most */
+  private val next = java.util.concurrent.atomic.AtomicLong()
