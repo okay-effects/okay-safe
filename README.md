@@ -53,7 +53,7 @@ object App extends Entry:
 
 A handler that holds an authority (a client, a connection) is made in the host with `Authority`; a sensitive effect
 (`given Sensitive[Bank]`) is handled only by `handleAudited` under `audit(interceptor)` — see
-`example/src/main/scala/okay/safe/example`.
+`example/src/main/scala/okay/bank`.
 
 The whole-program check of an application, its host package apart:
 

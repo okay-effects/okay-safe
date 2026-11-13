@@ -1,4 +1,4 @@
-package okay.safe.example
+package okay.bank
 
 import language.experimental.safe
 import language.experimental.separationChecking

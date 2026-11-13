@@ -4,7 +4,7 @@
 // capability nobody but the host's package can use; the host's package calls it from one handler.
 import language.experimental.safe
 import okay.safe.*
-import okay.safe.example.host.BankClient
+import okay.bank.host.BankClient
 
 object Direct:
   // error: method transfer cannot be accessed as a member of

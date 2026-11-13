@@ -5,7 +5,7 @@ package host
 
 import language.experimental.captureChecking
 import okay.safe.*
-import okay.safe.example.host.{BankClient, BankHost}
+import okay.bank.host.{BankClient, BankHost}
 
 object App extends Entry:
   def run(args: List[String])(using Runner): Unit =

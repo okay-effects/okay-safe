@@ -1,11 +1,11 @@
 // The host itself — its own package, where the client's API is open —, capture checked, calls the client from a
 // program's continuation instead of from its handler: the continuation would capture the client.
-//> host: okay.safe.example.host
-package okay.safe.example.host.bypass
+//> host: okay.bank.host
+package okay.bank.host.bypass
 
 import language.experimental.captureChecking
 import okay.safe.*
-import okay.safe.example.host.BankClient
+import okay.bank.host.BankClient
 
 object Bypass:
   def p(client: BankClient): Unit ! Pure =

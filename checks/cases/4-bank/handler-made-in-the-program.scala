@@ -1,7 +1,7 @@
 // A program makes the handler that holds an authority: `Authority` is the host's.
 import language.experimental.safe
 import okay.safe.*
-import okay.safe.example.*
+import okay.bank.*
 
 object MyOwn:
   def h[A]: Handler[Bank, Pure, A, A] =

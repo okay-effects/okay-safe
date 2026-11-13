@@ -13,7 +13,7 @@ class WholeTest extends munit.FunSuite:
   val trusted: List[Path] = classpath.filterNot(_ == example)
 
   test("the bank's application: no finding, its host at the edge"):
-    assertEquals(Whole.check(List(example), trusted, Policy.default.copy(host = List("okay.safe.example.host"))), Nil)
+    assertEquals(Whole.check(List(example), trusted, Policy.default.copy(host = List("okay.bank.host"))), Nil)
 
   test("the host held to the rules of programs: everything a host does is found"):
     val found = Whole.check(List(example), trusted, Policy.default).map(_.toString)

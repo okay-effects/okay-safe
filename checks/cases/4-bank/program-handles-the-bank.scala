@@ -1,7 +1,7 @@
 // A program handles the sensitive effect itself, past its audit.
 import language.experimental.safe
 import okay.safe.*
-import okay.safe.example.*
+import okay.bank.*
 
 object Unaudited:
   def silent[A](p: A ! Bank): A ! Pure =

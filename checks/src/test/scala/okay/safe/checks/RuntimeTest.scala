@@ -9,7 +9,7 @@ import scala.jdk.CollectionConverters.*
 
 import okay.safe.*
 import okay.safe.std.*
-import okay.safe.example.host.{BankClient, BankHost}
+import okay.bank.host.{BankClient, BankHost}
 
 /** an operation whose answer the host gives later, by resuming the `k` it was handed */
 enum Ask[X]:

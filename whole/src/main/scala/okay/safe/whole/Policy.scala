@@ -5,11 +5,19 @@ package okay.safe.whole
  * names joined by dots, objects without `$`, package objects left out: `scala.util.Random.nextInt`,
  * `okay.safe.run`. An entry `*.name` matches any path whose last part is `name`; `p.*.name` those of them under `p`.
  *
- * `kernel`: the packages of the trusted base, which the program may not declare classes into (package-private
- * access). `host`: the packages of the host's edge, inspected but not held to the rules of programs, and which a
+ * `kernel`: the packages of the trusted base, which no unit — a program's, the host's — may declare classes into,
+ * nor into a package under them (package-private access: `private[safe]` reaches `okay.safe.anything`).
+ * `host`: the packages of the host's edge, inspected but not held to the rules of programs, and which a
  * program may not name. `explicitNulls`: every program unit compiled with `-Yexplicit-nulls`. */
 final case class Policy(allow: List[String], deny: Map[String, String], kernel: List[String], host: List[String],
     explicitNulls: Boolean):
+
+  /** the policy, one line an entry, sorted: what its hash is of */
+  def canonical: String = (allow.sorted.map("allow " + _) ++ deny.toList.sorted.map((p, why) => s"deny $p $why") ++
+    kernel.sorted.map("kernel " + _) ++ host.sorted.map("host " + _) :+ s"explicit-nulls $explicitNulls").mkString("\n")
+
+  def hash: String = java.util.HexFormat.of.formatHex(
+    java.security.MessageDigest.getInstance("SHA-256").digest(canonical.getBytes("UTF-8")))
 
   /** why `path`, of the package `pkg`, may not be named; None when it may. The kernel's packages are allowed, not
    * the packages under them */
@@ -26,7 +34,8 @@ final case class Policy(allow: List[String], deny: Map[String, String], kernel: 
     else path == entry || path.startsWith(entry + ".")
 
   def isHost(pkg: String): Boolean = host.exists(h => pkg == h || pkg.startsWith(h + "."))
-  def isKernel(pkg: String): Boolean = kernel.contains(pkg)
+  /** in a package of the kernel or under one: `private[safe]` reaches every package under `okay.safe` */
+  def isKernel(pkg: String): Boolean = kernel.exists(k => pkg == k || pkg.startsWith(k + "."))
 
 object Policy:
   /** THE DEFAULT POLICY: what a program over the okay-safe kernel needs of the standard library and the JDK, and

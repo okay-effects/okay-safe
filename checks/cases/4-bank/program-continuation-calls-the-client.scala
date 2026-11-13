@@ -3,7 +3,7 @@
 // pure function, which would capture the client (host-continuation-calls-the-client shows that alone).
 import language.experimental.safe
 import okay.safe.*
-import okay.safe.example.host.BankClient
+import okay.bank.host.BankClient
 
 object Inside:
   def p(client: BankClient): Unit ! Pure =

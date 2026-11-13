@@ -14,7 +14,8 @@ import scala.jdk.CollectionConverters.*
  * the application's SEAL (written by the gate, module `gate`):
  *
  *   - the class path is the sealed jar alone, and the jar holds the seal;
- *   - every file of the jar is in the seal with its SHA-256, and every file of the seal is in the jar;
+ *   - every file of the jar is in the seal with its SHA-256, and every file of the seal is in the jar; none is in
+ *     the kernel's packages (`private[safe]` reaches every package under `okay.safe`);
  *   - the seal records what the checks require: the compiler's flags, the whole-program check passed, its policy;
  *   - the JVM refuses `sun.misc.Unsafe`'s memory access (`--sun-misc-unsafe-memory-access=deny`): tried, not read;
  *   - the kernel runs as the named module `okay.safe`, nothing opened, from the jar the seal names by its hash, and
@@ -102,7 +103,8 @@ private[safe] object Sealed:
       val present = j.entries.asScala.filterNot(_.isDirectory).map(_.getName)
         .filterNot(n => n == file || n == "META-INF/MANIFEST.MF")
         .map(n => n -> sha256(j.getInputStream(j.getEntry(n)).readAllBytes)).toMap
-      present.keys.find(!seal.files.contains(_)).map(n => s"$n is not in the seal: added after the checks")
+      present.keys.find(_.startsWith("okay/safe/")).map(n => s"$n is in the kernel's package: refused")
+        .orElse(present.keys.find(!seal.files.contains(_)).map(n => s"$n is not in the seal: added after the checks"))
         .orElse(present.collectFirst { case (n, sha) if seal.files(n) != sha =>
           s"$n does not match its seal: changed after the checks" })
         .orElse(seal.files.keys.find(!present.contains(_)).map(n => s"$n of the seal is not in the jar"))

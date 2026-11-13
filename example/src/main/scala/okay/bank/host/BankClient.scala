@@ -1,4 +1,4 @@
-package okay.safe.example.host
+package okay.bank.host
 
 import language.experimental.captureChecking
 

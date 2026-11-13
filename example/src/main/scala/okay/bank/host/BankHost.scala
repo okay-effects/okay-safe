@@ -1,10 +1,10 @@
-package okay.safe.example.host
+package okay.bank.host
 
 import language.experimental.captureChecking
 
 import okay.safe.*
 import okay.safe.std.*
-import okay.safe.example.*
+import okay.bank.*
 
 /** THE HOST: the edge where a program is run. The client goes to one handler only — made by `Authority`, outside
  * the checks, so the program's type stays pure — and that handler is taken only under the audit. Its entry is

@@ -24,11 +24,14 @@ final case class Finding(file: String, line: Int, what: String):
  *     attributes; with explicit nulls when the policy asks it
  *   - every symbol it names outside the program allowed by the policy; none of the host's
  *   - no `throw`, no `try`: a failure is an effect (`Throws`)
- *   - no class declared into a package of the kernel: package-private access is the kernel's
- * and of every unit, the host's too: no `@assumeSafe` outside safe mode — a claim nobody checked.
+ *   - no class declared into a package of the kernel or under it: package-private access is the kernel's
+ * and of every unit, the host's too: no `@assumeSafe` outside safe mode — a claim nobody checked —, and no class in
+ * the kernel's packages (a host under `okay.safe` could make a runner).
  * Code the compiler made (`Synthetic`: a case class's `productElement`, an enum's `fromOrdinal`) is not read.
  */
 object Whole:
+  /** the check's version, recorded in a seal: raised when what it finds changes */
+  val version = "okay-safe-whole 2"
 
   /** the findings of the program at `program` (directories and jars of TASTy, all inspected), its trusted
    * dependencies on `classpath` (the kernel, the standard library: read for their types, not inspected) */
@@ -112,8 +115,8 @@ object Whole:
             report(pos, "not compiled in safe mode: no `import language.experimental.safe`")
           if !cc then report(pos, "not capture checked")
           if policy.explicitNulls && !nulls then report(pos, "not compiled with explicit nulls (-Yexplicit-nulls)")
-          if policy.isKernel(unitPkg) then
-            report(pos, s"declares into the kernel's package $unitPkg: its package-private parts are open there")
+        if policy.isKernel(unitPkg) then
+          report(pos, s"declares into the kernel's package $unitPkg: its package-private parts are open there")
 
         def named(sym: Symbol, at: Position): Unit =
           if !sym.isNoSymbol && !sym.isPackageDef then
