@@ -6,4 +6,4 @@ import okay.agent.*
 
 import okay.bank.host.BankClient
 object Task:
-  val program: String ! Tools = pure(BankClient(Map("company" -> 1L)).toString)
+  val program: String ! Tools = pure(BankClient(null, null).toString)

@@ -61,6 +61,7 @@ class SealTest extends munit.FunSuite:
     val (exit, out) = java(sealedOnce, "@app.args")
     assertEquals(exit, 0, out)
     assert(out.contains("Right(500)") && out.contains("asked: Transfer(company,ann,300)"), out)
+    assert(out.contains("the service received: POST /transfers from=company&to=ann&amount=300"), out)
     val seal = String(JarFile(sealedOnce.jar.toFile).getInputStream(
       JarFile(sealedOnce.jar.toFile).getEntry("META-INF/okay-safe.seal")).readAllBytes)
     for line <- List("okay-safe-seal 1", s"compiler ${Gate.compiler}", "flags -experimental", "policy ",

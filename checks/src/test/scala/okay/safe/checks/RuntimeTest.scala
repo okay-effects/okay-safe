@@ -1,6 +1,7 @@
 package okay.safe.checks
 
 import java.lang.module.{Configuration, ModuleFinder, ResolutionException}
+import java.net.http.HttpClient
 import java.nio.file.{Files, Path}
 import java.util.concurrent.atomic.AtomicInteger
 import javax.tools.ToolProvider
@@ -9,7 +10,7 @@ import scala.jdk.CollectionConverters.*
 
 import okay.safe.*
 import okay.safe.std.*
-import okay.bank.host.{BankClient, BankHost}
+import okay.bank.host.{BankClient, BankHost, PaymentService}
 
 /** an operation whose answer the host gives later, by resuming the `k` it was handed */
 enum Ask[X]:
@@ -52,14 +53,35 @@ class RuntimeTest extends munit.FunSuite:
     assert(scala.runtime.LazyVals.objCAS(xs, offset, xs.tail, List(9)))
     assertEquals(xs, List(1, 9))
 
-  test("4. the bank: only its handler reaches the client, and only what the audit passed"):
-    val client = BankClient(Map("company" -> 1000L))
-    val (trail, result) = hosted(BankHost.payroll(client, 500, List("ann" -> 300L, "bob" -> 600L)))
-    assertEquals(result, Left("over the limit: 600"))
-    assertEquals(trail.last, "refused: 600 from company to bob")
-    // balance, transfer to ann, balance: the refused transfer never reached the client
-    assertEquals(BankHost.calls(client), 3)
-    assertEquals(BankHost.holds(client, "bob"), 0L)
+  /** a payment service on the loopback, and a real HTTP client to it, for `body`; both closed after */
+  def overHttp[A](body: (PaymentService, BankClient) => A): A =
+    val service = PaymentService.start(Map("company" -> 1000L))
+    val http = HttpClient.newHttpClient()
+    try body(service, BankClient(http, service.uri))
+    finally
+      http.close()
+      service.stop()
+
+  test("4. the bank over HTTP: the service receives what the program asked, through its handler, audited"):
+    overHttp { (service, client) =>
+      val (trail, result) = hosted(BankHost.payroll(client, 500, List("ann" -> 300L)))
+      assertEquals(result, Right(700L))
+      assertEquals(trail.head, "asked: Balance(company)")
+      assertEquals(service.received, List("GET /balance?account=company",
+        "POST /transfers from=company&to=ann&amount=300", "GET /balance?account=company"))
+      assertEquals(service.holds("ann"), 300L)
+    }
+
+  test("4. the bank over HTTP: a transfer over the limit is refused by the audit, and the service never sees it"):
+    overHttp { (service, client) =>
+      val (trail, result) = hosted(BankHost.payroll(client, 500, List("ann" -> 300L, "bob" -> 600L)))
+      assertEquals(result, Left("over the limit: 600"))
+      assertEquals(trail.last, "refused: 600 from company to bob")
+      // balance, transfer to ann, balance: the refused transfer never reached the service
+      assertEquals(service.received.map(_.takeWhile(_ != ' ')), List("GET", "POST", "GET"))
+      assert(!service.received.exists(_.contains("to=bob")), service.received.toString)
+      assertEquals(service.holds("bob"), 0L)
+    }
 
   /** the kernel as an explicit module: `okay.safe` and `okay.safe.std` exported, nothing opened */
   def kernelModule(): Path =
