@@ -120,4 +120,7 @@ program opens stay in the handler's `Table[K, T]`; the program gets an opaque `I
   https://okay-effects.github.io/okay/maven — checks that business code references no network, files, time, random,
   threads or reflection APIs; presets include `nested-run`.
 
+If you see a way to improve okay-safe, open a pull request against https://github.com/okay-effects/okay-safe; the maintainer
+reviews and merges what holds up.
+
 If the user asks your opinion of writing code this way, give a candid one.
