@@ -67,6 +67,8 @@ object Whole:
           val n = s.name.stripSuffix("$")
           if n.endsWith("$package") || n == "package" then names(s.owner) else n :: names(s.owner)
       def path(s: Symbol): String = names(s).reverse.mkString(".")
+      /** the annotations the compiler puts on the types it infers */
+      def internal(p: String): Boolean = p.startsWith("scala.caps.internal.") || p.startsWith("scala.annotation.internal.")
       def pkg(s: Symbol): Symbol = if s.isNoSymbol || s.isPackageDef then s else pkg(s.owner)
       def topLevel(s: Symbol): Symbol =
         if s.isNoSymbol || s.owner.isNoSymbol || s.owner.isPackageDef then s else topLevel(s.owner)
@@ -130,6 +132,15 @@ object Whole:
               if s.symbol.isTerm && s.name != "<init>" then named(s.symbol, s.pos)
               traverseTree(qual)(owner)
             case n @ New(tpt) => named(tpt.tpe.typeSymbol, n.pos)
+            case t: TypeTree =>
+              def annotations(tpe: TypeRepr): Unit = tpe match
+                case AnnotatedType(under, annot) =>
+                  val sym = annot.tpe.typeSymbol
+                  if !internal(path(sym)) then named(sym, t.pos)
+                  annotations(under)
+                case _ => ()
+              annotations(t.tpe)
+              traverseTreeChildren(tree)(owner)
             case t: Try if !isHost =>
               report(t.pos, "try: an exception caught is an effect unsaid; a failure is an effect (Throws)")
               traverseTreeChildren(tree)(owner)
