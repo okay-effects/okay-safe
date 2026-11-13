@@ -3,7 +3,7 @@ package okay.safe.whole
 /** WHAT A PROGRAM MAY NAME outside itself. Default deny: a symbol of a library — the standard library, the JDK, the
  * kernel — is allowed when an `allow` entry is a prefix of its path and no `deny` entry is. Paths are the owners'
  * names joined by dots, objects without `$`, package objects left out: `scala.util.Random.nextInt`,
- * `okay.safe.run`. An entry `*.name` matches any path whose last part is `name`.
+ * `okay.safe.run`. An entry `*.name` matches any path whose last part is `name`; `p.*.name` those of them under `p`.
  *
  * `kernel`: the packages of the trusted base, which the program may not declare classes into (package-private
  * access). `host`: the packages of the host's edge, inspected but not held to the rules of programs, and which a
@@ -20,6 +20,9 @@ final case class Policy(allow: List[String], deny: Map[String, String], kernel: 
 
   private def matches(entry: String, path: String): Boolean =
     if entry.startsWith("*.") then path.endsWith(entry.drop(1)) || path == entry.drop(2)
+    else if entry.contains(".*.") then
+      val (prefix, suffix) = entry.splitAt(entry.indexOf(".*."))
+      path.startsWith(prefix + ".") && path.endsWith(suffix.drop(2))
     else path == entry || path.startsWith(entry + ".")
 
   def isHost(pkg: String): Boolean = host.exists(h => pkg == h || pkg.startsWith(h + "."))
@@ -71,7 +74,9 @@ object Policy:
       "java.lang.Object.synchronized" -> "a monitor: threads are the host's",
       "java.lang.Object.getClass" -> "the way into reflection",
       "java.time.Clock" -> "the system's clock: an ambient effect (Clock)",
-      "*.now" -> "the time now: an ambient effect (Clock)",
+      "java.time.*.now" -> "the time now: an ambient effect (Clock)",
+      "scala.util.Properties" -> "it reads the environment and the system properties: an ambient effect",
+      "scala.util.PropertiesTrait" -> "it reads the environment and the system properties: an ambient effect",
       "java.time.InstantSource" -> "the system's clock: an ambient effect (Clock)",
       "okay.safe.Runner" -> "the authority to run programs is the host's",
       "okay.safe.run" -> "a program runs no program: the host runs it",
