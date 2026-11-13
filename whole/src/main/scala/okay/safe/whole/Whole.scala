@@ -69,7 +69,7 @@ object Whole:
       import q.reflect.*
 
       def names(s: Symbol): List[String] =
-        if s.isNoSymbol || s.name == "<root>" || s.name == "_root_" then Nil
+        if s.isNoSymbol || s.name == "<root>" || s.name == "_root_" || s.name == "<empty>" then Nil
         else
           val n = s.name.stripSuffix("$")
           if n.endsWith("$package") || n == "package" then names(s.owner) else n :: names(s.owner)
