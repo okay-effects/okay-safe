@@ -17,18 +17,26 @@ file (`scala.runtime.coverage.Invoker`) and rewrites immutable data through `sun
 (`scala.runtime.LazyVals`). It checks static references only, so a constructor with type arguments
 (`java.util.HashMap[K, V]()`), a type pattern (`case _: StackOverflowError`) and `@unchecked` on a scrutinee pass
 unseen; it trusts `@assumeSafe` from any library compiled anywhere, and package-private access is open to any file
-that says `package okay.safe`. Exceptions are allowed.
+that says `package okay.safe` — or any package under it. Exceptions are allowed. Three holes once open at compile
+time are closed by the kernel's own design: a client's API is `private` to the host's package (safe mode does not
+follow a parameter's instance members), a cell is read and written only by update methods (a cell that escapes is
+read-only, so inert), and a runner is given once by the kernel's `Launch` to the application's `Entry`, never made.
 
 Adding a **whole-program check of the TASTy** (module `whole`: default-deny allowlist, transitive over the program
 and every dependency given with it, no `throw`/`try`, no `@assumeSafe` outside safe mode, no class in the kernel's
 packages, capture checking and explicit nulls read from each unit's TASTy attributes) closes every hole found here
 that is visible in the code. Adding **JPMS** (the kernel a named module) and the JVM flag
-`--sun-misc-unsafe-memory-access=deny` closes the split package and `Unsafe` at run time as well.
+`--sun-misc-unsafe-memory-access=deny` closes the split package and `Unsafe` at run time as well. And a **seal**
+(module `gate`) makes the configuration part of the artifact: the gate compiles with the required flags, runs the
+check, and records it all with every file's hash; the kernel's `Launch` refuses to start what does not match it, a
+JVM without the flag, or a kernel off the module path. The same gate, in front of a runner, takes **code an agent
+wrote** (module `agent`): compiled, checked, and only then run with the host's handlers and its policy.
 
 What remains — what no check here blocks — is listed under "Where full guarantees stop": divergence and resource
-exhaustion, exceptions the runtime throws by itself, a cell given away read-only, the trusted base (the kernel's
-machine, the standard library as allowlisted, the JVM), and the host: the edge where programs are run and
-authorities given is ordinary code and is trusted, not checked.
+exhaustion, exceptions the runtime throws by itself, the trusted base (the kernel's machine and launcher, the
+standard library as allowlisted, the JVM), the host — the edge where programs are run and authorities given is
+ordinary code, capture checked but trusted —, and the seal's author: unsigned, a seal proves what was built, not
+who built it.
 
 ## The guarantee, as it stands
 
@@ -36,10 +44,11 @@ authorities given is ordinary code and is trusted, not checked.
 > capture and separation checking, and passing the whole-program check with the default policy, is a value: it
 > performs no effect when built; run, it performs effects only by asking operations, which only handlers answer;
 > a handler holding an authority (a client, the clock) is made only by the host; a sensitive effect is answered only
-> under its audit; continuations and clauses are pure functions, so a continuation resumed twice is the same
-> computation twice — never a replay, since `k` is immutable data. Excluded: non-termination, stack or heap
-> exhaustion, exceptions thrown by the runtime itself (arithmetic, a partial function of the standard library), and
-> whatever the trusted base does.
+> under its audit; a runner exists only in the entry `Launch` gave it to, after verifying the deployment's seal;
+> a handler's state never leaves its clause readable; continuations and clauses are pure functions, so a
+> continuation resumed twice is the same computation twice — never a replay, since `k` is immutable data. Excluded:
+> non-termination, stack or heap exhaustion, exceptions thrown by the runtime itself (arithmetic, a partial function
+> of the standard library), and whatever the trusted base does.
 
 ## Versions and flags
 
@@ -52,6 +61,7 @@ authorities given is ordinary code and is trusted, not checked.
 | per file | `import language.experimental.safe` (implies capture checking), `import language.experimental.separationChecking` |
 | asked by cases | `-Yexplicit-nulls`, `-language:experimental.saferExceptions`, `-language:strictEquality`, `-Wsafe-init -Werror` |
 | run time | `--sun-misc-unsafe-memory-access=deny`; the kernel as a named module (`okay.safe`, nothing opened) |
+| sealed deployment | `java @app.args` (the flag, `--module-path mods --add-modules okay.safe -jar app.jar`): written by the gate, verified by `Launch` |
 
 Scala 3.10.1 (`sbt -Dscala=3.10.1 test`): the kernel and its 87 tests pass; two cases differ — a polymorphic clause
 that assigns `k` or its cell to a variable it closes over **compiles** under 3.10.1 and is refused by the nightly.
@@ -63,7 +73,8 @@ The guarantee above is the nightly's.
 |---|---|---|
 | `Effects.scala`, `Audit.scala`, `std/*` | safe mode + separation checking | everyone |
 | `Rows.scala`, `Machine.scala`, `Messages.scala`, `Branches.scala` | plain, `@assumeSafe` (trusted base) | everyone; the machine is `private[safe]` |
-| `Host.scala` — `Runner`, `run`, `step`, `NestedRun` | capture checked, not safe mode, not `@assumeSafe` | the host only |
+| `Host.scala` — `Runner` (made by the kernel only), `Entry`, `run`, `step`, `NestedRun` | capture checked, not safe mode, not `@assumeSafe` | the host only |
+| `Launch.scala` — the application's entry and the seal's verification | no checks; `private[safe]`: the JVM starts it, no code names it | nobody: `Main-Class` |
 | `Unchecked.scala` — `Authority` (handlers holding a capability, the system clock, `pull`) | no checks | the host only |
 
 The split of the host into a capture-checked part (`Host.scala`) and an unchecked part (`Unchecked.scala`) is what
@@ -76,7 +87,8 @@ checked, and their capabilities are hidden from the program's type.
 
 Mechanisms: **CC** capture/separation checking; **SM** safe mode; **WP** the whole-program TASTy check; **RT** run
 time (the machine's own check, JPMS, a JVM flag); **—** not blocked. Each row names its case(s) in `checks/cases`
-or its test in `checks/src/test` (RuntimeTest, WholeTest).
+or its test in `checks/src/test` (RuntimeTest, WholeTest, SealTest), or its program in `agent/programs` (AgentTest).
+**access** is Scala's access control (`private`, `private[pkg]`), checked by the typer.
 
 | # | violation | compile time | whole-program | run time | case / test |
 |---|---|---|---|---|---|
@@ -116,6 +128,8 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest).
 | 7 | `@unchecked` on a scrutinee | **— (SM misses it)** | WP | — | unchecked-annotation |
 | 7 | `@assumeSafe` in safe mode | SM | — | — | assume-safe-in-safe-mode |
 | 7 | reflection, `Class.forName`, `sun.misc.Unsafe` | SM | WP | JPMS | reflection |
+| 7 | host declared under `okay.safe` (`private[safe]` reaches subpackages): makes a runner | — (Scala's access) | WP: kernel's package, the host's units too | — (JPMS: another package) | host-under-the-kernels-package |
+| 7 | `package okay.safe { ... }` nested in a program's file | — | WP: every package clause | — | nested-package-into-the-kernel |
 | 7 | program without explicit nulls | — | WP: attribute | — | program-without-explicit-nulls |
 | 8 | `throw` an unchecked exception, `try`/`catch`, `???` | **— (Throwable assumed safe)** | WP | escapes the run to the host | runtime-exception |
 | 8 | checked exception thrown in a continuation | `saferExceptions` + CC: `CanThrow` captured | WP | — | checked-exception-safer |
@@ -128,6 +142,22 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest).
 | 10 | immutable `List` rewritten by `LazyVals` | **— (`scala.runtime` assumed safe; a list is pure)** | WP | `--sun-misc-unsafe-memory-access=deny` | immutable-by-lazyvals; RuntimeTest |
 | 10 | field read before initialization | `-Wsafe-init -Werror` | — | — | safe-init |
 | 10 | an operation compared with an unrelated value | `strictEquality` | — | — | strict-equality |
+| 11 | a class changed after the checks | — | — | `Launch`: `does not match its seal` | SealTest |
+| 11 | a class added after the checks; one in the kernel's package | — | — | `Launch`: `not in the seal`; `in the kernel's package` | SealTest |
+| 11 | no seal: built without the gate | — | — | `Launch`: `no seal` | SealTest |
+| 11 | the JVM without `--sun-misc-unsafe-memory-access=deny` | — | — | `Launch`: tried, `allows sun.misc.Unsafe's memory access` | SealTest |
+| 11 | the kernel on the class path; another kernel than the one sealed | — | — | `Launch`: the class path alone; `not the one sealed` (by SHA-256) | SealTest |
+| 11 | a source without `import language.experimental.safe` | — | WP: the gate seals nothing | — | SealTest |
+| 11 | built without a required flag (`-Werror`, `-Wsafe-init`) | — | — | `Launch`: `compiled without -Wsafe-init` | SealTest |
+| 11 | a seal written by hand over a class the gate never saw | — | — | **— (unsigned: accepted)** | SealTest |
+| 12 | agent: console, `run`, a cast, reflection, a thread, `Authority`, `caps.unsafe` | SM | (not reached) | — | console, runs-a-program, cast, reflection, thread, authority, escape-hatch |
+| 12 | agent: the bank's client called; made | access; SM (`new` of a host class) | — | — | calls-the-client, makes-a-client |
+| 12 | agent: the bank handled by the program itself | macro: `the effect Bank is sensitive` | — | — | handles-the-bank |
+| 12 | agent: global mutable state | CC | — | — | global-state |
+| 12 | agent: `java.time.Instant.now`, `scala.util.Random`, `throw`, a unit in `okay.bank.host` | — | WP | — | java-time, random, throws, kernel-package |
+| 12 | agent: no safe import | SM: the gate's own file cannot name it | (WP: not compiled in safe mode) | — | no-import |
+| 12 | agent: a transfer over the limit; to a new payee | compiles, passes the gate | — | the guard: blocked, the bank never asked; asked and approved: passed | over-the-limit, new-payee; AgentTest |
+| 12 | positive: balance, log, a transfer the guard passes | compiles | clean | runs, audited | good; AgentTest |
 
 ## Why each mechanism stops where it does
 
@@ -135,8 +165,14 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest).
   `[X] -> (E[X], Continuation) -> ...`, so neither holds a runner, a client, a label, a variable or a writable cell.
   It does not track what is not a capability: a Java object, a static method, an exception, a `null` (which is
   pure). Polymorphic functions were a gap until recently (3.10.1 misses the variable case).
-- **Separation checking** makes a cell `Mutable`: writing asks the exclusive reference; a reference that escapes
-  through a type argument is read-only. It does not stop the read-only escape.
+- **Separation checking** makes a cell `Mutable`: an update method asks the exclusive reference; a reference that
+  escapes through a type argument is read-only. It does not stop the escape itself — the cell still leaves, as an
+  identity — so the kernel makes reading an update too: what escapes can be neither read nor written. A cell given
+  away typed exclusive (`Cell[Int]^` in the effect's answer) stands for a root capability no program may use.
+- **Access control** is the typer's, and it reaches where safe mode does not: an instance member of a value the
+  program was given. So the client's API is `private[host]` and a runner's constructor `private`; but a qualified
+  `private[p]` is open to every package under `p`, so no unit may declare under the kernel's package (WP, and
+  `Launch` refuses a jar with one).
 - **Safe mode** is an allowlist of *static* references, with whole packages assumed safe and anything carrying
   `@assumeSafe` believed. Instance members are taken as checked (they came from a value the program had), types are
   not checked except in `new`, imports are skipped, constructor proxies with type arguments and annotations on a
@@ -158,16 +194,82 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest).
 1. **Totality.** Divergence (`def loop: Int ! R = loop`), stack and heap exhaustion, arithmetic exceptions, a
    standard-library partial function (`List.head` on `Nil`), `MatchError`: not effects the types say. The kernel runs
    in constant stack for binds, but a program may still build an unbounded value.
-2. **A cell escapes read-only** (`cell-as-answer`). The program can read, after the fact, the state its path left.
-3. **The trusted base**: the machine and rows (`@assumeSafe`, plain Scala), the standard library behind the
-   allowlist, the JVM. The audit is as good as the kernel's code that enforces it.
+2. **A cell still escapes — inert.** `cell-as-answer` compiles up to the read: the program holds the cell's
+   identity (`eq`, `hashCode`), no state. Refusing the escape itself would need the answer type of every effect a
+   stateful handler takes to be checked for cells (a macro, as `Plain` is) — not done.
+3. **The trusted base**: the machine and rows (`@assumeSafe`, plain Scala), `Launch` and its seal verification, the
+   standard library behind the allowlist, the JVM. The audit is as good as the kernel's code that enforces it.
 4. **The host.** Running programs and giving authorities is the host's; host code can be capture checked (and here
-   is) but is not held to the rules of programs. A host can always make a runner inside a continuation: only
-   `NestedRun` stops that, at run time.
-5. **Configuration is part of the guarantee.** The import in each file, the flags, the policy, the JVM flag and the
-   module path must be what this note says; nothing in the code proves that a deployment used them.
-6. **Experimental compiler.** Safe mode, capture checking and separation checking are experimental in a nightly;
+   is) but is not held to the rules of programs. It can no longer make a runner — it has the one its entry was
+   given — but a host *not* capture checked can still use that runner inside a continuation (RuntimeTest 1): only
+   `NestedRun` stops that, at run time. Capture checking the host is the host's choice; the seal does not record it.
+5. **Configuration, sealed — not signed.** The gate records the compiler, the flags, the policy's hash, the check
+   and its result, the JVM flag and the module jars, and `Launch` refuses a deployment that does not match them. But
+   the seal is unsigned: anyone who can write the jar can recompute the hashes over classes compiled any way and
+   write "clean" (SealTest, last test). A signature by the gate's key, its public half pinned in the kernel's
+   launcher, would bind the seal to the gate — then only the gate's key forges. Also: the policy hash is recorded,
+   not compared with a pinned one; `-Dokay.safe.unsealed` starts anything (the operator's switch, said on stderr,
+   as any JVM flag is the operator's); the JVM flags are checked by trying `Unsafe`, which cannot be set from a jar's
+   manifest (`Add-Opens`/`Launcher-Agent-Class` open or add, none denies), so `app.args` carries them.
+6. **Agents' programs** pass the same gate, so the same limits: they may diverge or exhaust memory (no time or
+   step limit), and the gate itself runs unsealed from sbt (`agent/run`), the kernel on the class path — sealing the
+   gate's host, as the bank's is, is the step left.
+7. **Experimental compiler.** Safe mode, capture checking and separation checking are experimental in a nightly;
    their soundness is not proven, and changes between versions (3.10.1 vs. the nightly) show it.
+
+## The sealed deployment
+
+`gate/.../Seal.scala` builds it from sources; `core/.../Launch.scala` verifies it (SealTest does both, in JVMs of
+their own):
+
+```
+sbt "gate/runMain okay.safe.gate.Main --sources example/src/main/scala --host okay.bank.host \
+  --entry okay.bank.host.BankHost --kernel core/target/.../classes --library <scala-library.jar> --out deploy"
+cd deploy && java @app.args     # --sun-misc-unsafe-memory-access=deny --module-path mods --add-modules okay.safe
+                                # -jar app.jar   (Main-Class: okay.safe.Launch)
+```
+
+The seal (`META-INF/okay-safe.seal` in app.jar): `okay-safe-seal 1`, `compiler`, `flags`, `policy` (SHA-256 of
+the policy, one line an entry), `whole` (the check's version) and `result`, `host`, `entry`, `jvm`, `module
+okay.safe <sha>`, `library scala.library <sha>`, and `file <sha> <path>` for every class and TASTy file. `Launch`
+asks: the class path the sealed jar alone; every file sealed and unchanged, none added, none under `okay/safe/`;
+the format, `-Werror` and `-Wsafe-init` among the flags, a clean result, the JVM flag asked; `sun.misc.Unsafe`'s
+memory access refused (tried on a field of the kernel's); the kernel the named module `okay.safe`, closed, and both
+module jars the ones sealed. Then, once, it gives the entry a runner.
+
+## A gate for agents' code
+
+`agent/`: an agent writes `object Task: val program: String ! Tools = ...` over `Tools = Log + Clock + Bank`. The
+gate compiles it with the required flags beside its own safe-mode file
+`GateEntry.program: String ! Tools = Task.program`
+(so the compiler fixes the type), checks the whole of it with a policy that adds the bank's and the agent's API and
+closes their packages and hosts, and only then loads it and runs it: the log kept, the system's clock, the bank's
+client behind `Guard.bank` — an audit whose clause asks the `Guard` effect for a decision on each call, as okay-guard
+sees a call (a tool's name and its arguments). The host answers `Guard` with a handler: here rules in okay-guard's
+shape (`block bank.transfer amount > 500 : over the limit`, `ask …`, `pass *`, the first that matches decides);
+okay-guard itself — its page, its person in the loop, its journal — would be another handler of the same effect.
+
+```
+sbt "agent/run agent/programs/good.scala"         # passed the gate (compiled in ~1 s, checked in ~0.1 s), ran
+sbt "agent/run agent/programs/java-time.scala"    # REFUSED: java.time.Instant.now: the time now: an ambient effect
+```
+
+Compile time per program (AgentTest, one JVM, the compiler warm after the first): 35–300 ms to compile (the first
+~700 ms), 20–100 ms to check; a fresh JVM from the command line: 0.8–1.3 s to compile, ~0.1 s to check. A refusal
+by the compiler costs no check. Of `agent/programs`: three pass the gate (one runs; two run and are blocked by the
+guard before the bank is asked, and one of them passes when the ask is approved), sixteen are refused, each with the
+reason in the matrix (row 12).
+
+## What changed (2026-11-13, second pass)
+
+- **Compile time instead of run time or not at all:** a program given the client cannot call it (access, was WP
+  only); a cell given away cannot be read (was not blocked); a host continuation cannot make a runner (was
+  `NestedRun` only) — `Runner.host` is the kernel's, `Launch` the only caller, `Entry` the only receiver.
+- **The application moved** from `okay.safe.example` to `okay.bank`: `private[safe]` reaches every package under
+  `okay.safe`, so a host there could make a runner. The whole-program check now refuses any unit under the kernel's
+  packages, the host's too, and reads nested package clauses (it read the file's first only); `throw` is reported
+  as itself (it was reported as `<special-ops>.throw`, not allowlisted).
+- **The seal** and **the agents' gate**, above.
 
 ## Benchmark: okay-safe vs okay-scala 0.1.1
 
