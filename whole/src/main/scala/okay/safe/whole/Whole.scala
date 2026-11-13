@@ -335,12 +335,12 @@ object Whole:
               for a <- targs if !higherKinded(a.tpe); why <- data(a.tpe) do
                 report(a.pos, s"the host gives the program's ${path(fun.symbol)} a type that is not data: $why")
               traverseTreeChildren(tree)(owner)
-            // an application's type names the effects its words are of (`word(Get())`: `Word[Lookup, String]`)
+            // an application's type: the effects its words are of, and their answers (`State.get[() => String]`)
             case t: Apply =>
-              if !isHost then held(t.tpe, answers = false): Unit
+              holds(t.tpe, t.pos, answers = true)
               traverseTreeChildren(tree)(owner)
             case t: TypeApply =>
-              if !isHost then held(t.tpe, answers = false): Unit
+              holds(t.tpe, t.pos, answers = true)
               traverseTreeChildren(tree)(owner)
             case _ => traverseTreeChildren(tree)(owner)
         walk.traverseTree(tasty.ast)(Symbol.spliceOwner)
