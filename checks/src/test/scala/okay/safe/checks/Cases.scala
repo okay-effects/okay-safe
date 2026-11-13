@@ -59,7 +59,8 @@ object Cases:
         classpath + File.pathSeparator + out) ++ header(file, "flags") :+ file.toString
       val reporter = Collect()
       Driver().process(args.toArray, reporter): Unit
-      reporter.all.toList.filter(r => (r.level == ERROR || r.level == WARNING) && !r.text.matches("\\w+ (errors?|warnings?) found"))
+      reporter.all.toList.filter(r => (r.level == ERROR || r.level == WARNING) && !r.text.matches("\\w+ (errors?|warnings?) found") &&
+        r.text != "No warnings can be incurred under -Werror")
     }
 
     def whole(out: Path): List[Finding] =
