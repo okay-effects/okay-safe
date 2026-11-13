@@ -10,6 +10,7 @@ import dotty.tools.dotc.core.Contexts.Context
 import dotty.tools.dotc.interfaces.Diagnostic.{ERROR, WARNING}
 import dotty.tools.dotc.reporting.{Diagnostic, Reporter}
 
+import okay.audit.{Audit, Boundary, Layer, Presets, Report, Types}
 import okay.safe.whole.{Finding, Policy, Whole}
 
 /*
@@ -57,6 +58,26 @@ object Gate:
   /** what was compiled into `out`, held to the whole-program check: the findings, none when it passed */
   def check(out: Path, classpath: List[Path], policy: Policy): List[Reason] =
     Whole.check(List(out), classpath, policy).map((f: Finding) => Reason(f.file, f.line, f.what))
+
+  /** THE BYTECODE WITNESS (okay-audit): what was compiled into `out`, held to okay-audit's rules — its default and its
+   * presets named after the standard effects — with the program's packages as business, the host's as handlers, the
+   * kernel as the runtime (the standard library is read for the hierarchy, its classes judged by the data list);
+   * and to its boundary rule on types, okay-audit's data list with the kernel's. It reads what TASTy does not carry —
+   * a class compiled from Java beside the program, what any JVM language's host gives it — and its result is the
+   * seal's. */
+  def audit(out: Path, host: List[String], runtime: List[Path]): (Boundary, Report) =
+    val boundary = Boundary(Map("application" -> Layer.Business, "runtime" -> Layer.Runtime),
+      rules = Presets.rules("default, pure"), packages = Map("application" -> host.map(_ -> Layer.Handlers).toMap),
+      types = Some(Types(Types.Data ++ Policy.kernelData)))
+    (boundary, Audit.run(boundary, Map("application" -> List(out), "runtime" -> runtime)))
+
+  /** okay-audit's findings as a gate's reasons */
+  def reasons(report: Report): List[Reason] =
+    report.findings.toList.map(f => Reason("", 0,
+      s"okay-audit: ${f.module}: ${f.ref.from} -> ${f.ref.member}${f.place}: ${f.rule.why}${f.rule.hint}"))
+
+  /** okay-audit's jar, as this gate was given it */
+  def auditJar: Path = Path.of(classOf[Report].getProtectionDomain.getCodeSource.getLocation.toURI)
 
   /** the sources under `dir`, every `.scala` file */
   def sources(dir: Path): List[Path] =

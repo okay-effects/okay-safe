@@ -35,7 +35,7 @@ final case class Finding(file: String, line: Int, what: String):
  */
 object Whole:
   /** the check's version, recorded in a seal: raised when what it finds changes */
-  val version = "okay-safe-whole 3"
+  val version = "okay-safe-whole 4"
 
   /** the findings of the program at `program` (directories and jars of TASTy, all inspected), its trusted
    * dependencies on `classpath` (the kernel, the standard library: read for their types, not inspected) */

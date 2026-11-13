@@ -1,4 +1,4 @@
-// refused: java.time.Instant.now: the time now
+// refused: java.time.Instant.now: clock: the time now
 // Ambient, assumed safe by safe mode: the clock by java.time. The whole-program check refuses it.
 import language.experimental.safe
 import okay.safe.*

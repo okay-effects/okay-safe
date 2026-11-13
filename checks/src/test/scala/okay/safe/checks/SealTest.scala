@@ -63,11 +63,11 @@ class SealTest extends munit.FunSuite:
     assert(out.contains("Right(500)") && out.contains("asked: Transfer(company,ann,300)"), out)
     assert(out.contains("the service received: POST /transfers from=company&to=ann&amount=300"), out)
     val seal = String(JarFile(sealedOnce.jar.toFile).getInputStream(
-      JarFile(sealedOnce.jar.toFile).getEntry("META-INF/okay-safe.seal")).readAllBytes)
-    for line <- List("okay-safe-seal 1", s"compiler ${Gate.compiler}", "flags -experimental", "policy ",
-        "whole okay-safe-whole", "result clean", "entry okay.bank.host.BankHost",
-        "jvm --sun-misc-unsafe-memory-access=deny", "module okay.safe ", "library scala.library ",
-        "file ", "okay/bank/Payroll$.class") do
+      JarFile(sealedOnce.jar.toFile).getEntry(okay.audit.Seal.Entry)).readAllBytes)
+    for line <- List("okay-audit-seal 1", "checker okay-audit", "config ", "result pass", s"compiler ${Gate.compiler}",
+        "flags -experimental", "policy ", "whole okay-safe-whole", "whole-result clean",
+        "entry okay.bank.host.BankHost", "jvm --sun-misc-unsafe-memory-access=deny", "module okay.safe ",
+        "library scala.library ", "audit okay.audit ", "file ", "okay/bank/Payroll$.class") do
       assert(seal.contains(line), s"$line not in\n$seal")
 
   test("a class changed after the checks: refused"):
@@ -87,7 +87,7 @@ class SealTest extends munit.FunSuite:
 
   test("no seal: refused"):
     val d = copy()
-    rewrite(d.jar)(_.filterNot(_._1 == "META-INF/okay-safe.seal"))
+    rewrite(d.jar)(_.filterNot(_._1 == okay.audit.Seal.Entry))
     refused(d, "no seal in")
 
   test("the JVM without --sun-misc-unsafe-memory-access=deny: refused"):
@@ -95,7 +95,8 @@ class SealTest extends munit.FunSuite:
       "--module-path", "mods", "--add-modules", "okay.safe", "-jar", "app.jar")
 
   test("the kernel on the class path, not the named module: refused"):
-    val cp = List("app.jar", "mods/okay-safe.jar", "mods/scala-library.jar").mkString(File.pathSeparator)
+    val cp = List("app.jar", "mods/okay-safe.jar", "mods/scala-library.jar", "mods/okay-audit.jar")
+      .mkString(File.pathSeparator)
     refused(copy(), "the class path must be the sealed jar alone",
       "--sun-misc-unsafe-memory-access=deny", "-cp", cp, "okay.safe.Launch")
 
@@ -121,8 +122,23 @@ class SealTest extends munit.FunSuite:
     val d = copy()
     val forged = Array[Byte](1, 2, 3)
     rewrite(d.jar)(_.map {
-      case ("META-INF/okay-safe.seal", b) =>
-        "META-INF/okay-safe.seal" -> (String(b) + s"file ${Seal.sha256(forged)} okay/bank/Forged.class\n").getBytes
+      case (okay.audit.Seal.Entry, b) =>
+        okay.audit.Seal.Entry -> (String(b) + s"file ${Seal.sha256(forged)} okay/bank/Forged.class\n").getBytes
       case other => other
     } :+ ("okay/bank/Forged.class" -> forged))
     assertEquals(java(d, "@app.args")._1, 0)
+
+  test("okay-audit's bytecode witness: a class compiled from Java beside the program, which has no TASTy for the " +
+      "whole-program check to read, is refused by the gate"):
+    val classes = Files.createTempDirectory("okay-safe-java")
+    val src = Files.createTempDirectory("okay-safe-java-src")
+    Files.createDirectories(src.resolve("okay/bank"))
+    val leak = Files.writeString(src.resolve("okay/bank/Leak.java"), "package okay.bank; public final class Leak { " +
+      "public static int open() throws Exception { try (var s = new java.net.Socket(\"localhost\", 1)) { return 1; } } }")
+    assertEquals(javax.tools.ToolProvider.getSystemJavaCompiler.run(null, null, null, "-d", classes.toString,
+      leak.toString), 0)
+    assertEquals(Gate.check(classes, classpath, okay.safe.whole.Policy.default.copy(host = host)), Nil)
+    val (_, report) = Gate.audit(classes, host, List(kernel))
+    assert(report.findings.exists(_.ref.member == "java.net.Socket#<init>"), report.text)
+    assert(Gate.reasons(report).exists(_.toString.contains("okay-audit: application: okay.bank.Leak")),
+      Gate.reasons(report).mkString("\n"))

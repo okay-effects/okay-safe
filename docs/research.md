@@ -31,9 +31,10 @@ and ids — the real resources stay in handlers, captured there by the host — 
 `Any` ("The boundary", below). Adding **JPMS** (the kernel a named module) and the JVM flag
 `--sun-misc-unsafe-memory-access=deny` closes the split package and `Unsafe` at run time as well. And a **seal**
 (module `gate`) makes the configuration part of the artifact: the gate compiles with the required flags, runs the
-check, and records it all with every file's hash; the kernel's `Launch` refuses to start what does not match it, a
-JVM without the flag, or a kernel off the module path. The same gate, in front of a runner, takes **code an agent
-wrote** (module `agent`): compiled, checked, and only then run with the host's handlers and its policy.
+check and okay-audit's bytecode check, and records it all with every file's hash in okay-audit's seal; the kernel's
+`Launch` refuses to start what does not match it, a JVM without the flag, or a kernel off the module path. The same
+gate, in front of a runner, takes **code an agent wrote** (module `agent`): compiled, checked, and only then run with
+the host's handlers and its policy.
 
 What remains — what no check here blocks — is listed under "Where full guarantees stop": divergence and resource
 exhaustion, exceptions the runtime throws by itself, the trusted base (the kernel's machine and launcher, the
@@ -309,13 +310,16 @@ cd deploy && java @app.args     # --sun-misc-unsafe-memory-access=deny --module-
                                 # -jar app.jar   (Main-Class: okay.safe.Launch)
 ```
 
-The seal (`META-INF/okay-safe.seal` in app.jar): `okay-safe-seal 1`, `compiler`, `flags`, `policy` (SHA-256 of
-the policy, one line an entry), `whole` (the check's version) and `result`, `host`, `entry`, `jvm`, `module
-okay.safe <sha>`, `library scala.library <sha>`, and `file <sha> <path>` for every class and TASTy file. `Launch`
-asks: the class path the sealed jar alone; every file sealed and unchanged, none added, none under `okay/safe/`;
-the format, `-Werror` and `-Wsafe-init` among the flags, a clean result, the JVM flag asked; `sun.misc.Unsafe`'s
-memory access refused (tried on a field of the kernel's); the kernel the named module `okay.safe`, closed, and both
-module jars the ones sealed. Then, once, it gives the entry a runner.
+The seal is okay-audit's (`META-INF/okay-audit.seal` in app.jar, `okay.audit.Seal`): `okay-audit-seal 1`, `checker`,
+`config` (SHA-256 of okay-audit's configuration) and `result` of okay-audit's own check of the classes (the bytecode
+witness, below), `jvm`, then the gate's fields: `compiler`, `flags`, `policy` (SHA-256 of the policy, one line an
+entry), `whole` (the check's version) and `whole-result`, `host`, `entry`, `module okay.safe <sha>`, `library
+scala.library <sha>`, `audit okay.audit <sha>`, and `file <sha> <path>` for every class and TASTy file. `Launch`
+asks, through okay-audit's verifier: the class path the sealed jar alone; the format and a passed result; every file
+sealed and unchanged, none added, none under `okay/safe/`; and of its own: `-Werror` and `-Wsafe-init` among the
+flags, a clean whole-program result, the JVM flag asked (and among the JVM's arguments); `sun.misc.Unsafe`'s memory
+access refused (tried on a field of the kernel's); the kernel the named module `okay.safe`, closed, and the three
+module jars (the kernel, the library, okay-audit) the ones sealed. Then, once, it gives the entry a runner.
 
 ## A gate for agents' code
 
@@ -340,6 +344,29 @@ Compile time per program (AgentTest, one JVM, the compiler warm after the first)
 by the compiler costs no check. Of `agent/programs`: three pass the gate (one runs; two run and are blocked by the
 guard before the bank is asked, and one of them passes when the ask is approved), sixteen are refused, each with the
 reason in the matrix (row 12).
+
+## What lives where: okay-audit (2026-11-13, fourth pass)
+
+Three checkers had grown over one question — does code that should only perform effects reach the world, or receive
+what is not data: this repository's whole-program check and seal, okay-java's resumable guard (`forbid`, presets
+named after okay.rows.std's effects) and okay-audit (okay's module, on bytecode, zero dependencies, its report
+evidence). They are one now: okay-audit holds the shared parts, and each of the others keeps what only it can see.
+
+| mechanism | where it lives now | why there |
+|---|---|---|
+| the ambient APIs (reader, writer, clock, fresh, async, io, nested-run; the escape hatches), each with its why and the effect to use instead | **okay-audit** (`okay.audit.Presets`); `Policy.ambient` reads them as TASTy paths (`Rule.sourcePath`) | one list for a Java program's effectful methods, a business module's bytecode, a program's TASTy |
+| the JDK's data that may cross the boundary | **okay-audit** (`okay.audit.Types.Data`); `Policy.data` takes its `java.*` part | the bytecode boundary rule reads the same list |
+| the seal: its format, its files' check, its result, the JVM options | **okay-audit** (`okay.audit.Seal`); the gate writes it, `Launch` verifies with it | one verifier for every launcher |
+| the boundary rule on bytecode: what a host of any JVM language gives a program, a host's type named | **okay-audit**, run by the gate as a second witness (`Gate.audit`); its result is the seal's | TASTy has no unit for a class compiled from Java: this check did not see one at all |
+| the allowlist (deny by default) over a program's names | **here**, on TASTy; okay-audit has an allowlist mode of its own for bytecode | a name is a Scala path here, with its position; in bytecode a cast is a `checkcast` the compiler also emits everywhere, an annotation (`@unchecked`, `caps.unsafe`) is erased, an inline call is expanded |
+| the boundary rule on types (held types, an effect's answers, what the host gives) | **here**, on TASTy | unions, opaque types, `sealed`, refinements and capture sets are erased in bytecode: okay-audit's rule is the same rule on what bytecode keeps (descriptors, `Signature`s), conservative where it erased (`Any`, a union's LUB) |
+| safe mode imported, capture-checked and explicit-nulls attributes, `@assumeSafe` outside safe mode, classes in the kernel's packages, `throw` and `try` | **here** | TASTy's attributes and trees; bytecode has `athrow` but not the source's `throw` (the compiler emits its own), and no import |
+| `-Werror`, `-Wsafe-init`, `Unsafe` refused (tried), the kernel the named module | **here** (`Launch`) | the kernel's own guarantee: what it was compiled with and how it runs |
+
+The whole-program check is `okay-safe-whole 4`: messages of the ambient APIs are okay-audit's now (`clock: the time
+now is nondeterminism — replay breaks — use a Clock effect (…, okay.safe.std.Clock)`); the cases expecting the old
+wording follow it. The policy's own entries are what only TASTy shows. okay-audit comes from `~/.m2` (okay's
+`okayAudit/publishM2`) until it is released.
 
 ## What changed (2026-11-13, third pass)
 

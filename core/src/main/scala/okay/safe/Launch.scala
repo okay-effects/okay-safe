@@ -1,11 +1,8 @@
 package okay.safe
 
 import java.nio.file.{Files, Path}
-import java.security.MessageDigest
-import java.util.HexFormat
-import java.util.jar.JarFile
 
-import scala.jdk.CollectionConverters.*
+import okay.audit.Seal
 
 /*
  * THE ENTRY OF AN APPLICATION, AND THE PROOF THAT IT WAS CHECKED. Part of the trusted base: compiled with no checks,
@@ -13,7 +10,7 @@ import scala.jdk.CollectionConverters.*
  * It is the one caller of `Runner.host`: it gives a runner ONCE, to the application's `Entry`, after it has verified
  * the application's SEAL (written by the gate, module `gate`):
  *
- *   - the class path is the sealed jar alone, and the jar holds the seal;
+ *   - the class path is the sealed jar alone, and the jar holds the seal (okay-audit's, verified by okay-audit);
  *   - every file of the jar is in the seal with its SHA-256, and every file of the seal is in the jar; none is in
  *     the kernel's packages (`private[safe]` reaches every package under `okay.safe`);
  *   - the seal records what the checks require: the compiler's flags, the whole-program check passed, its policy;
@@ -52,33 +49,28 @@ private[safe] object Launch:
       case _ => Left(s"the entry $name is not an okay.safe.Entry")
     catch case e: ReflectiveOperationException => Left(s"no entry $name: $e")
 
-/** THE SEAL: what the gate recorded of a build, and its verification at the entry */
+/** THE SEAL: what the gate recorded of a build, and its verification at the entry. The seal's format, its files'
+ * check, its result and the JVM's options are okay-audit's (okay.audit.Seal, the one verifier of the family); what is
+ * the kernel's own is asked here: the flags the guarantee is stated under, the whole-program check passed, the JVM
+ * refusing `sun.misc.Unsafe` (tried), the kernel and the libraries the named modules sealed */
 private[safe] object Sealed:
-  /** where the seal is, in the application's jar */
-  val file = "META-INF/okay-safe.seal"
-  val format = "1"
   /** what a build must have been compiled with: every warning an error, initialization checked */
   val requiredFlags = List("-Werror", "-Wsafe-init")
   val deny = "--sun-misc-unsafe-memory-access=deny"
 
-  def sha256(bytes: Array[Byte]): String = HexFormat.of.formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
-
-  /** a seal: its fields (`key value`), and its files (`file <sha-256> <path>`) */
-  final case class Seal(fields: Map[String, String], files: Map[String, String]):
-    def apply(key: String): Either[String, String] = fields.get(key).toRight(s"the seal records no $key")
-
-  def parse(text: String): Seal =
-    val lines = text.linesIterator.map(_.trim).filter(_.nonEmpty).map(l => l.span(_ != ' ')).toList
-    Seal(lines.collect { case (k, v) if k != "file" => k -> v.trim }.toMap,
-      lines.collect { case ("file", v) => v.trim.span(_ != ' ') }.map((sha, path) => path.trim -> sha).toMap)
+  def sha256(bytes: Array[Byte]): String = Seal.sha256(bytes)
 
   /** the entry's name, or why the application may not start */
   def verify(): Either[String, String] =
     for
       jar <- applicationJar
-      seal <- read(jar)
-      _ <- files(jar, seal)
+      seal <- Seal.read(jar)
+      _ <- Seal.verifyResult(seal)
+      _ <- Seal.verifyFiles(seal, Seal.files(jar, n => n == Seal.Entry || n == "META-INF/MANIFEST.MF"),
+        n => Option.when(n.startsWith("okay/safe/"))(s"$n is in the kernel's package: refused"))
       _ <- settings(seal)
+      // the seal's JVM option is TRIED, not read from the JVM's arguments (okay-audit's Seal.verifyJvm reads them,
+      // through java.management, at a start's cost): a JVM that refuses Unsafe is the fact the option stands for
       _ <- unsafeDenied
       _ <- module(seal)
       entry <- seal("entry")
@@ -90,38 +82,15 @@ private[safe] object Sealed:
       case List(one) if one.endsWith(".jar") && Files.isRegularFile(Path.of(one)) => Right(Path.of(one))
       case other => Left(s"the class path must be the sealed jar alone: ${other.mkString(java.io.File.pathSeparator)}")
 
-  def read(jar: Path): Either[String, Seal] =
-    val j = JarFile(jar.toFile)
-    try Option(j.getEntry(file)).map(e => parse(String(j.getInputStream(e).readAllBytes, "UTF-8")))
-      .toRight(s"no seal in $jar: it was not built by the gate")
-    finally j.close()
-
-  /** every file of the jar sealed, as it was; none missing */
-  def files(jar: Path, seal: Seal): Either[String, Unit] =
-    val j = JarFile(jar.toFile)
-    try
-      val present = j.entries.asScala.filterNot(_.isDirectory).map(_.getName)
-        .filterNot(n => n == file || n == "META-INF/MANIFEST.MF")
-        .map(n => n -> sha256(j.getInputStream(j.getEntry(n)).readAllBytes)).toMap
-      present.keys.find(_.startsWith("okay/safe/")).map(n => s"$n is in the kernel's package: refused")
-        .orElse(present.keys.find(!seal.files.contains(_)).map(n => s"$n is not in the seal: added after the checks"))
-        .orElse(present.collectFirst { case (n, sha) if seal.files(n) != sha =>
-          s"$n does not match its seal: changed after the checks" })
-        .orElse(seal.files.keys.find(!present.contains(_)).map(n => s"$n of the seal is not in the jar"))
-        .toLeft(())
-    finally j.close()
-
   /** the settings the guarantee is stated under, as the seal records them */
   def settings(seal: Seal): Either[String, Unit] =
     for
-      f <- seal("okay-safe-seal")
-      _ <- Either.cond(f == format, (), s"a seal of format $f, not $format")
       _ <- seal("compiler")
       flags <- seal("flags").map(_.split(' ').toSet)
       _ <- requiredFlags.find(!flags(_)).map(m => s"compiled without $m").toLeft(())
       _ <- seal("policy")
       _ <- seal("whole")
-      result <- seal("result")
+      result <- seal("whole-result")
       _ <- Either.cond(result.startsWith("clean"), (), s"the whole-program check did not pass: $result")
       jvm <- seal("jvm")
       _ <- Either.cond(jvm.split(' ').contains(deny), (), s"the seal does not ask $deny")
@@ -134,7 +103,8 @@ private[safe] object Sealed:
       Left(s"the JVM allows sun.misc.Unsafe's memory access: start it with $deny")
     catch case _: UnsupportedOperationException => Right(())
 
-  /** the kernel the named module `okay.safe`, closed, from the jar the seal names; the library from its own */
+  /** the kernel the named module `okay.safe`, closed, from the jar the seal names; the library and okay-audit from
+   * their own */
   def module(seal: Seal): Either[String, Unit] =
     val kernel = classOf[Runner].getModule
     def location(m: Module): Option[Path] =
@@ -154,6 +124,7 @@ private[safe] object Sealed:
         "the kernel's module opens its packages to reflection")
       _ <- hashed(kernel, "module")
       _ <- hashed(classOf[Option[?]].getModule, "library")
+      _ <- hashed(classOf[Seal].getModule, "audit")
     yield ()
 
   extension [A](o: java.util.Optional[A]) private def toScala: Option[A] = if o.isPresent then Some(o.get) else None

@@ -19,12 +19,18 @@ val strict = Seq("-experimental", "-deprecation", "-feature", "-unchecked", "-We
 
 val munit = "org.scalameta" %% "munit" % "1.3.6" % Test
 
+/** OKAY-AUDIT (okay's module okay-audit, zero dependencies): the ambient APIs and the effect to use instead, the
+ * boundary rule on bytecode, the seal and its verifier — one checker for the family (docs/research.md, "what lives
+ * where"). Published by okay's `okayAudit/publishM2` to ~/.m2 until it has a release */
+val okayAudit = "io.github.okay-effects" %% "okay-audit" % "0.2.0-SNAPSHOT"
+ThisBuild / resolvers += Resolver.mavenLocal
+
 /** munit registers its tests by lambdas that close over the suite while it is built: -Wsafe-init warns of each */
 val tests = Test / scalacOptions -= "-Wsafe-init"
 
 /** THE KERNEL: rows, programs as data, handlers, the CEK machine, the audit; the standard effects */
 lazy val core = (project in file("core"))
-  .settings(name := "okay-safe", scalacOptions ++= strict, libraryDependencies += munit, tests)
+  .settings(name := "okay-safe", scalacOptions ++= strict, libraryDependencies ++= Seq(okayAudit, munit), tests)
 
 lazy val root = (project in file(".")).aggregate(core, example, whole, gate, agent, checks, bench)
   .settings(publish / skip := true)
@@ -37,7 +43,7 @@ lazy val example = (project in file("example")).dependsOn(core)
  * allowlist — what safe mode assumes of the standard library and of `@assumeSafe`, checked again, transitively */
 lazy val whole = (project in file("whole"))
   .settings(name := "okay-safe-whole", scalacOptions ++= strict,
-    libraryDependencies ++= Seq("org.scala-lang" %% "scala3-tasty-inspector" % scala3, munit), tests)
+    libraryDependencies ++= Seq("org.scala-lang" %% "scala3-tasty-inspector" % scala3, okayAudit, munit), tests)
 
 /** THE GATE: sources compiled with the required flags, held to the whole-program check, and sealed — a deployment
  * the kernel's Launch verifies before it gives the application a runner */
