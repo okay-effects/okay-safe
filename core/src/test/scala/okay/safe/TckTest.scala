@@ -103,7 +103,7 @@ object Tck:
     case T.ThrowsH(e, body) => throws(fails(e))(build(body))
     case T.ChooseH(body) => choose(build(body))
 
-  def outcome(t: T): Int = step(build(t)) match
+  def outcome(t: T): Int = Runner.host(step(build(t))) match
     case Step.Done(value) => value
     case Step.Asked(_, _, _) => -1000000 // no handler
 

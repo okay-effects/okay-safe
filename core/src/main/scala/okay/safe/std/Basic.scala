@@ -1,5 +1,8 @@
 package okay.safe.std
 
+import language.experimental.safe
+import language.experimental.separationChecking
+
 import okay.safe.*
 
 /*
@@ -19,13 +22,13 @@ enum State[S, X]:
 object State:
   def get[S]: Word[State % S, S] = word(Get())
   def put[S](s: S): Word[State % S, Unit] = word(Put(s))
-  def modify[S, R[_]](f: S => S)(using In[State % S, R]): Unit ! R = get[S].flatMap(s => put(f(s)))
+  def modify[S, R[_]](f: S -> S)(using In[State % S, R]): Unit ! R = get[S].flatMap(s => put(f(s)))
 
   /** the state kept by the handler, answered in place; each path of the program has its own */
   def run[S, R[_], Rest[_], A](init: S)(p: A ! R)(using Split[State % S, R, Rest]): (S, A) ! Rest =
     handle(p, Handler.stateful[State % S, Rest, A, (S, A), S](init)((s, a) => pure((s, a)))(
-      [X] => (op: State[S, X], cell: Cell[S]) => op match
-        case Get() => cell.get
+      [X] => (op: State[S, X], cell: Cell[S]^) => op match
+        case _: Get[s] => cell.get
         case Put(s) => cell.set(s)))
 
 /** READER: a value of the surroundings. */
@@ -37,13 +40,13 @@ object Reader:
 
   def run[V, R[_], Rest[_], A](value: V)(p: A ! R)(using Split[Reader % V, R, Rest]): A ! Rest =
     handle(p, Handler.tail[Reader % V, Rest, A, A](pure)([X] => (op: Reader[V, X]) => op match
-      case Ask() => value))
+      case _: Ask[v] => value))
 
   /** the program, its asks answered by the reader outside, through `f`: an interceptor */
-  def local[V, R[_], A](f: V => V)(p: A ! R)(using In[Reader % V, R]): A ! R =
+  def local[V, R[_], A](f: V -> V)(p: A ! R)(using In[Reader % V, R]): A ! R =
     intercept(p, Handler.control[Reader % V, R, A, A](pure)(
       [X] => (op: Reader[V, X], k: Continuation[X, R, A]) => op match
-        case Ask() => ask[V].flatMap(v => k(f(v)))))
+        case _: Ask[v] => ask[V].flatMap(v => k(f(v)))))
 
 /** WRITER: values told, collected in order. */
 enum Writer[W, X]:
@@ -54,7 +57,7 @@ object Writer:
 
   def run[W, R[_], Rest[_], A](p: A ! R)(using Split[Writer % W, R, Rest]): (List[W], A) ! Rest =
     handle(p, Handler.stateful[Writer % W, Rest, A, (List[W], A), List[W]](Nil)((told, a) => pure((told.reverse, a)))(
-      [X] => (op: Writer[W, X], told: Cell[List[W]]) => op match
+      [X] => (op: Writer[W, X], told: Cell[List[W]]^) => op match
         case Tell(w) => told.set(w :: told.get)))
 
 /** THROWS: the rest of the program is left — unwound, its finalizers run — before the failure is answered. */
@@ -70,7 +73,7 @@ object Throws:
         case Raise(error) => pure(Left(error))))
 
   /** the program, or what `rescue` makes of its failure */
-  def recover[E, R[_], Rest[_], A](rescue: E => A ! Rest)(p: A ! R)(using Split[Throws % E, R, Rest]): A ! Rest =
+  def recover[E, R[_], Rest[_], A](rescue: E -> A ! Rest)(p: A ! R)(using Split[Throws % E, R, Rest]): A ! Rest =
     handle(p, Handler.abort[Throws % E, Rest, A, A](pure)([X] => (op: Throws[E, X]) => op match
       case Raise(error) => rescue(error)))
 
@@ -117,7 +120,7 @@ object Fresh:
   /** numbers from `start` on */
   def from[R[_], Rest[_], A](start: Long)(p: A ! R)(using Split[Fresh, R, Rest]): A ! Rest =
     handle(p, Handler.stateful[Fresh, Rest, A, A, Long](start)((_, a) => pure(a))(
-      [X] => (op: Fresh[X], next: Cell[Long]) => op match
+      [X] => (op: Fresh[X], next: Cell[Long]^) => op match
         case Next => next.set(next.get + 1); next.get - 1))
 
 /** CLOCK: the time, in milliseconds — the system's, or one a test sets. */
@@ -127,9 +130,6 @@ enum Clock[X]:
 object Clock:
   def now: Word[Clock, Long] = word(Now)
 
-  def system[R[_], Rest[_], A](p: A ! R)(using Split[Clock, R, Rest]): A ! Rest =
-    at(() => System.currentTimeMillis())(p)
-
-  def at[R[_], Rest[_], A](time: () => Long)(p: A ! R)(using Split[Clock, R, Rest]): A ! Rest =
+  def at[R[_], Rest[_], A](time: () -> Long)(p: A ! R)(using Split[Clock, R, Rest]): A ! Rest =
     handle(p, Handler.tail[Clock, Rest, A, A](pure)([X] => (op: Clock[X]) => op match
       case Now => time()))

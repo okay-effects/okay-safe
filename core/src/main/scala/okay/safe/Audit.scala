@@ -1,5 +1,8 @@
 package okay.safe
 
+import language.experimental.safe
+import language.experimental.separationChecking
+
 /*
  * CONTROL AND AUDIT. An interceptor stands between a program and the handler of one of its effects: each operation
  * comes to it first. `observe` is shown each one and passes it on; `around` is given each one and its way on, and
@@ -22,8 +25,8 @@ object Sensitive:
  * run time. */
 opaque type Plain[E[_]] = Unit
 
-object Plain:
-  inline given plain[E[_]]: Plain[E] = ${ Messages.plain[E] }
+/** its given is a macro, written outside safe mode (Messages.scala) */
+object Plain extends Messages.PlainFound:
   /** what the check gives when it passes */
   private[safe] def checked[E[_]]: Plain[E] = ()
 
@@ -66,12 +69,12 @@ def handleAudited[S[_], R[_], Rest[_], A, B](p: A ! R, h: Handler[S, Rest, A, B]
 
 /** each operation of `E` in `p` shown to `see` — a program of the row, run before the operation goes on as it is:
  * a trace, a count, a trail. Nothing of the program changes. */
-def observe[E[_], R[_], A](p: A ! R)(see: [X] => E[X] => Unit ! R)(using at: In[E, R])(using Plain[E]): A ! R =
+def observe[E[_], R[_], A](p: A ! R)(see: [X] -> E[X] -> Unit ! R)(using at: In[E, R])(using Plain[E]): A ! R =
   intercept(p, Handler.control[E, R, A, A](pure)([X] => (op: E[X], k: Continuation[X, R, A]) =>
     Comp.Bind(see[X](op), _ => k.after(Comp.Ask(at.place, op)))))
 
 /** around each operation of `E` in `p`: given it and `proceed`, its way on as it is, the program of its answer —
  * `proceed`, something before or after it, another operation, an answer of its own, or a failure */
-def around[E[_], R[_], A](p: A ! R)(f: [X] => (E[X], X ! R) => X ! R)(using at: In[E, R])(using Plain[E]): A ! R =
+def around[E[_], R[_], A](p: A ! R)(f: [X] -> (E[X], X ! R) -> X ! R)(using at: In[E, R])(using Plain[E]): A ! R =
   intercept(p, Handler.control[E, R, A, A](pure)([X] => (op: E[X], k: Continuation[X, R, A]) =>
     k.after(f[X](op, Comp.Ask(at.place, op)))))

@@ -20,9 +20,11 @@ package okay.safe
  */
 
 /** the row `R` and the effect `E` after it: a name only, of no value. The row `R + E` is `[X] =>> Sum[R, E, X]` */
+@caps.assumeSafe
 sealed trait Sum[R[_], E[_], X]
 
 /** the effect of no operation */
+@caps.assumeSafe
 sealed trait Void[X]
 
 /** the row of no effect */
@@ -35,10 +37,12 @@ infix type +[R[_], E[_]] = [X] =>> Sum[R, E, X]
 infix type %[F[_, _], S] = [X] =>> F[S, X]
 
 /** `E` is in `R`: its place there, found by the compiler; missing, a compile error naming both */
+@caps.assumeSafe
 sealed trait In[E[_], R[_]]:
   private[safe] def place: At[E, R]
 
 /** `E` is in `R`, and `R` without it is `Rest`: what a handler takes */
+@caps.assumeSafe
 sealed trait Split[E[_], R[_], Rest[_]] extends In[E, R]:
   private[safe] def place: Place[E, R, Rest]
 
@@ -53,6 +57,7 @@ type Has[E[_]] = [R[_]] =>> In[E, R]
 
 /** EVERY EFFECT OF `R` IS IN `S`: where each is there, found by the compiler. What `into` asks, to use a program of
  * `R` as a program of `S`. At run time: the place in `S` of each place of `R`. */
+@caps.assumeSafe
 sealed abstract class Sub[R[_], S[_]]:
   /** the place in `S` of the place `at` of `R`, with no operation in hand; null where one would be refused */
   private[safe] def to[E[_]](at: At[E, R]): At[E, S]
@@ -89,6 +94,7 @@ sealed abstract class Sub[R[_], S[_]]:
  *
  * Rows and effects are of one kind, so a row can be written where an effect is meant, and the cases that it gives
  * are refused when an operation comes to them (`NoHandler`). */
+@caps.assumeSafe
 sealed abstract class Place[E[_], R[_], Rest[_]] extends Sub[E, R] with Split[E, R, Rest]:
   private[safe] def place: Place[E, R, Rest] = this
 
@@ -123,6 +129,7 @@ sealed abstract class Place[E[_], R[_], Rest[_]] extends Sub[E, R] with Split[E,
 
 /** the places found: a row of one, then the last effect, then one further in — in this order, so an effect twice
  * in a row is found at its last place, the one the innermost handler takes */
+@caps.assumeSafe
 object Place extends LastPlace:
   /** no effect is at the place: the operation is refused; with none in hand (`Sub.to`), null */
   private def refused(op: Any): Null = if op == null then null else throw NoHandler(op)
@@ -202,32 +209,40 @@ object Place extends LastPlace:
   /** the one effect of a row of one */
   given only[E[_]]: Place[E, E, Pure] = Only()
 
+@caps.assumeSafe
 trait LastPlace extends FirstOfTwo:
   /** the last effect of `R + E` */
   given last[R[_], E[_]]: Place[E, R + E, R] = Place.Last()
 
+@caps.assumeSafe
 trait FirstOfTwo extends InitPlace:
   /** the first effect of a row of two: without it the row is the other effect, `G` — not `Pure + G` */
   given first[E[_], G[_]]: Place[E, E + G, G] = Place.First()
 
+@caps.assumeSafe
 trait InitPlace:
   /** one further in than the last, `G` */
   given init[E[_], R[_], G[_], Rest[_]](using at: Place[E, R, Rest]): Place[E, R + G, Rest + G] = Place.Init(at)
 
+@caps.assumeSafe
 object In extends InMissing:
   given found[E[_], R[_], Rest[_]](using at: Place[E, R, Rest]): In[E, R] = at
 
+@caps.assumeSafe
 trait InMissing:
   /** no place found: the error says which effect and which row, as they are written */
   inline given missing[E[_], R[_]]: In[E, R] = ${ Messages.notIn[E, R] }
 
+@caps.assumeSafe
 object Split extends SplitMissing:
   given found[E[_], R[_], Rest[_]](using at: Place[E, R, Rest]): Split[E, R, Rest] = at
 
+@caps.assumeSafe
 trait SplitMissing:
   inline given missing[E[_], R[_], Rest[_]]: Split[E, R, Rest] = ${ Messages.notSplit[E, R, Rest] }
 
 /** the rows found in a row: itself; then `Pure`, and `R + E` by its parts; then an effect */
+@caps.assumeSafe
 object Sub extends SubMore:
   /** the same row: every place where it is */
   final case class Same[R[_]]() extends Sub[R, R]:
@@ -310,6 +325,7 @@ object Sub extends SubMore:
         if in == null then null else Place.Init(in)
     private[safe] def before[T[_]](next: Sub[S + E, T]): Sub[R, T] = Both(this, next)
 
+@caps.assumeSafe
 trait SubMore extends SubOne:
   given pure[S[_]]: Sub[Pure, S] = Sub.OfNone()
 
@@ -318,6 +334,7 @@ trait SubMore extends SubOne:
 
   given more[R[_], E[_], S[_]](using r: Sub[R, S], e: In[E, S]): Sub[R + E, S] = Sub.More(r, e.place)
 
+@caps.assumeSafe
 trait SubOne:
   /** an effect alone: its place is the row of one */
   given one[E[_], S[_]](using e: In[E, S]): Sub[E, S] = e.place
@@ -327,5 +344,6 @@ trait SubOne:
  * evidence in scope it is found anyway, and says nothing. Nothing at run time. */
 opaque type Known[E[_]] = Unit
 
+@caps.assumeSafe
 object Known:
   given known[E[_], R[_]](using In[E, R]): Known[E] = ()

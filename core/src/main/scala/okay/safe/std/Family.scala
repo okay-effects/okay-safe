@@ -1,5 +1,8 @@
 package okay.safe.std
 
+import language.experimental.safe
+import language.experimental.separationChecking
+
 import okay.safe.*
 
 /*
@@ -15,7 +18,7 @@ object Fail:
   export Throws.{Raise, raise, run}
 
   /** okay-scala's order: the program, then what is made of its failure */
-  def recover[E, R[_], Rest[_], A](p: A ! R)(h: E => A ! Rest)(using Split[Fail % E, R, Rest]): A ! Rest =
+  def recover[E, R[_], Rest[_], A](p: A ! R)(h: E -> A ! Rest)(using Split[Fail % E, R, Rest]): A ! Rest =
     Throws.recover(h)(p)
 
 type Yield[O, X] = Emit[O, X]
@@ -24,5 +27,5 @@ object Yield:
   val Emit = okay.safe.std.Emit.Send
   export okay.safe.std.Emit.{collect, send as emit}
 
-  def foreach[O, R[_], Rest[_], A](p: A ! R)(using Split[Yield % O, R, Rest])(f: O => Unit ! Rest): A ! Rest =
+  def foreach[O, R[_], Rest[_], A](p: A ! R)(using Split[Yield % O, R, Rest])(f: O -> Unit ! Rest): A ! Rest =
     okay.safe.std.Emit.each(f)(p)

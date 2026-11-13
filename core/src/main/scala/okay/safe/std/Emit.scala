@@ -1,5 +1,8 @@
 package okay.safe.std
 
+import language.experimental.safe
+import language.experimental.separationChecking
+
 import okay.safe.*
 
 /** EMIT: a stream of values, possibly endless. The producer is a program that sends; what a stream is made into —
@@ -14,29 +17,29 @@ object Emit:
   def sendAll[T, R[_]](values: IterableOnce[T])(using In[Emit % T, R]): Unit ! R =
     def from(left: LazyList[T]): Unit ! R =
       if left.isEmpty then unit else send(left.head).flatMap(_ => from(left.tail))
-    from(values.iterator.to(LazyList))
+    from(LazyList.from(values))
 
   /** the values sent, with the program's own */
   def collect[T, R[_], Rest[_], A](p: A ! R)(using Split[Emit % T, R, Rest]): (List[T], A) ! Rest =
     handle(p, Handler.stateful[Emit % T, Rest, A, (List[T], A), List[T]](Nil)((sent, a) => pure((sent.reverse, a)))(
-      [X] => (op: Emit[T, X], sent: Cell[List[T]]) => op match
+      [X] => (op: Emit[T, X], sent: Cell[List[T]]^) => op match
         case Send(value) => sent.set(value :: sent.get)))
 
   /** `f` run for each value, as it is sent */
-  def each[T, R[_], Rest[_], A](f: T => Unit ! Rest)(p: A ! R)(using Split[Emit % T, R, Rest]): A ! Rest =
+  def each[T, R[_], Rest[_], A](f: T -> Unit ! Rest)(p: A ! R)(using Split[Emit % T, R, Rest]): A ! Rest =
     handle(p, Handler.control[Emit % T, Rest, A, A](pure)(
       [X] => (op: Emit[T, X], k: Continuation[X, Rest, A]) => op match
-        case Send(value) => f(value).flatMap(k)))
+        case Send(value) => f(value).flatMap(u => k(u))))
 
   /** a stream of the values, each through `f`: a new stream. Its row `S` is `R` with `Emit % U` for `Emit % T`:
    * the one expected, or with nothing said the new stream last. The program is put into the row of both streams,
    * and the old one is handled there. */
-  def map[T, U, R[_], Rest[_], S[_], A](f: T => U)(p: A ! R)(
+  def map[T, U, R[_], Rest[_], S[_], A](f: T -> U)(p: A ! R)(
       using from: Split[Emit % T, R, Rest], to: Split[Emit % U, S, Rest]): A ! S =
     each[T, S + Emit % T, S, A](value => send(f(value)))(p.into(using Sub.exchanged(from, to)))
 
   /** a stream of the values that `keep`: an interceptor — those kept are sent on, to the stream's handler */
-  def filter[T, R[_], A](keep: T => Boolean)(p: A ! R)(using In[Emit % T, R]): A ! R =
+  def filter[T, R[_], A](keep: T -> Boolean)(p: A ! R)(using In[Emit % T, R]): A ! R =
     intercept(p, Handler.control[Emit % T, R, A, A](pure)(
       [X] => (op: Emit[T, X], k: Continuation[X, R, A]) => op match
         case Send(value) => if keep(value) then send(value).flatMap(k) else k(())))
@@ -44,7 +47,7 @@ object Emit:
   /** a stream of the first `n` values; the producer is not resumed after them: it is left there, unwound. What
    * its finalizers send then goes to the stream's handler, past this cut. */
   def take[T, R[_], A](n: Int)(p: A ! R)(using In[Emit % T, R]): Unit ! R =
-    type Left = Int => Unit ! R
+    type Left = Int -> Unit ! R
     intercept(p, Handler.control[Emit % T, R, A, Left](_ => pure(_ => unit))(
       [X] => (op: Emit[T, X], k: Continuation[X, R, Left]) => op match
         case Send(value) => pure: left =>
@@ -52,21 +55,3 @@ object Emit:
           else send(value).flatMap(_ => if left == 1 then k.unwind else k(()).flatMap(_(left - 1)))))
       .flatMap(_(n))
 
-  /** the values, pulled as they are needed: the producer runs no further than was asked. NOT READ TO ITS END, the
-   * sequence keeps the rest of the producer and nobody leaves it: its finalizers (`ensuring`) do not run. A
-   * producer that holds something is read to its end, or cut by `take` before it is pulled: `pull(take(n)(p))`.
-   * The same holds of `zip` and `merge`, which pull: of the stream that is not read to its end. */
-  def pull[T, A](p: A ! Emit % T): LazyList[T] =
-    run(handle(p, Handler.control[Emit % T, Pure, A, LazyList[T]](_ => pure(LazyList.empty))(
-      [X] => (op: Emit[T, X], k: Continuation[X, Pure, LazyList[T]]) => op match
-        case Send(value) => pure(value #:: run(k(()))))))
-
-  /** two streams, value by value in pairs, as long as both last */
-  def zip[T, U, A, B, R[_]](a: A ! Emit % T, b: B ! Emit % U)(using In[Emit % (T, U), R]): Unit ! R =
-    sendAll(pull(a).zip(pull(b)))
-
-  /** two streams in turn, a value of each; then what is left of the longer */
-  def merge[T, A, B, R[_]](a: A ! Emit % T, b: B ! Emit % T)(using In[Emit % T, R]): Unit ! R =
-    def turns(first: LazyList[T], second: LazyList[T]): LazyList[T] =
-      if first.isEmpty then second else first.head #:: turns(second, first.tail)
-    sendAll(turns(pull(a), pull(b)))

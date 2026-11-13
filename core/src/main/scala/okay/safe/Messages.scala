@@ -5,7 +5,12 @@ import scala.quoted.*
 /** THE COMPILE ERRORS of a missing effect: the one macro here, for what given search cannot say — the effect and
  * the row as they are written, `State % Int` and `Reader % String + State % Int`, where Scala would print the type
  * lambdas they are, or nothing at all under a context bound. */
+@caps.assumeSafe
 object Messages:
+  /** `Plain[E]`, found by the macro below: the given of `Plain`'s companion */
+  trait PlainFound:
+    inline given plain[E[_]]: Plain[E] = ${ Messages.plain[E] }
+
   def notIn[E[_]: Type, R[_]: Type](using Quotes): Expr[Nothing] =
     import quotes.reflect.*
     report.errorAndAbort(missing(TypeRepr.of[E], TypeRepr.of[R]))

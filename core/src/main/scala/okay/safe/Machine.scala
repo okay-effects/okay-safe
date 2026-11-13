@@ -32,6 +32,7 @@ import scala.annotation.tailrec
  *
  * Frames and the levels in a `k` are never changed: a `k` is shared, never copied, and may be resumed any number
  * of times. A level on the stack belongs to the one path that runs: a handler in place writes its state there. */
+@caps.assumeSafe
 private[safe] object Machine:
   /** what follows a value inside one level: from an `X` to the level's value, a `V`, in the row `R` */
   sealed abstract class Frames[R[_], -X, V]
@@ -223,7 +224,17 @@ private[safe] object Machine:
       extends Next[P, Z]
   final class Stop[P[_], Z](val at: Step[P, Z]) extends Next[P, Z]
 
-  def run[R[_], A](p: Comp[R, A]): Step[R, A] = loop[R, A, A, R, A](p, End[R, A](), Top[R, A]())
+  /** THE ONE RUN OF A THREAD: true while a machine loops on it. A run begun while another loops — a program that
+   * runs a program inside a continuation, or a handler that does inside its clause — would nest a machine on the
+   * JVM's stack, and is refused (`NestedRun`): the check of last resort, at run time, for what the types of
+   * programs written in safe mode already refuse (docs/research.md). */
+  private val looping: ThreadLocal[java.lang.Boolean] = ThreadLocal.withInitial(() => java.lang.Boolean.FALSE)
+
+  def run[R[_], A](p: Comp[R, A]): Step[R, A] =
+    if looping.get() then throw NestedRun()
+    looping.set(java.lang.Boolean.TRUE)
+    try loop[R, A, A, R, A](p, End[R, A](), Top[R, A]())
+    finally looping.set(java.lang.Boolean.FALSE)
 
   /** One turn takes the computation `c` apart. Every type is said: left to itself, the compiler would settle a type
    * that a match has only bounded on `Nothing`. */

@@ -1,5 +1,8 @@
 package okay.safe.std
 
+import language.experimental.safe
+import language.experimental.separationChecking
+
 import okay.safe.*
 
 /** THE AUDIT TRAIL: a line recorded. An ordinary effect, handled outside the interceptors that record to it — so
@@ -14,5 +17,5 @@ object Audit:
    * is one trail through all the paths; inside it, each path has its own */
   def trail[R[_], Rest[_], A](p: A ! R)(using Split[Audit, R, Rest]): (List[String], A) ! Rest =
     handle(p, Handler.stateful[Audit, Rest, A, (List[String], A), List[String]](Nil)((lines, a) =>
-      pure((lines.reverse, a)))([X] => (op: Audit[X], lines: Cell[List[String]]) => op match
+      pure((lines.reverse, a)))([X] => (op: Audit[X], lines: Cell[List[String]]^) => op match
         case Record(line) => lines.set(line :: lines.get)))
