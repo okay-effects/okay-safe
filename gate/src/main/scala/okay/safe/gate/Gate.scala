@@ -38,8 +38,9 @@ object Gate:
         val (file, line) = if d.pos.exists then (d.pos.source.file.name, d.pos.line + 1) else ("", 0)
         all += Reason(file, line, d.message)
 
-  /** -Werror's own line: no error of its own */
-  private def werror(text: String): Boolean = text == "No warnings can be incurred under -Werror"
+  /** -Werror's own line, and the counts at the end of a run: no diagnostic of their own */
+  private def werror(text: String): Boolean = text == "No warnings can be incurred under -Werror" ||
+    text.linesIterator.forall(_.trim.matches("""\d+ (errors?|warnings?) found"""))
 
   /** `sources` compiled into `out` against `classpath`: none when it compiled; else its errors, and its warnings
    * (under -Werror a warning fails the run, and the error is only "No warnings can be incurred") */

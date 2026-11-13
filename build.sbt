@@ -26,7 +26,7 @@ val tests = Test / scalacOptions -= "-Wsafe-init"
 lazy val core = (project in file("core"))
   .settings(name := "okay-safe", scalacOptions ++= strict, libraryDependencies += munit, tests)
 
-lazy val root = (project in file(".")).aggregate(core, example, whole, gate, checks, bench)
+lazy val root = (project in file(".")).aggregate(core, example, whole, gate, agent, checks, bench)
   .settings(publish / skip := true)
 
 /** AN APPLICATION: a bank's programs in safe mode, its client and handler at the host's edge */
@@ -66,3 +66,15 @@ lazy val bench = (project in file("bench")).dependsOn(core)
     Compile / run / mainClass := Some("okay.safe.Launch"), run / fork := true,
     run / javaOptions ++= Seq("-Xmx2g", "-Dokay.safe.unsealed=the benchmark",
       "-Dokay.safe.entry=okay.safe.bench.Bench"))
+
+/** THE GATE FOR AGENTS: a program an agent wrote over a log, the clock and the bank, compiled in safe mode, checked
+ * whole, and only then run with the host's handlers — its bank behind an audit that asks the guard, the policy a
+ * handler. `sbt "agent/run agent/programs/good.scala"` */
+lazy val agent = (project in file("agent")).dependsOn(core, example, gate)
+  .settings(name := "okay-safe-agent", publish / skip := true, scalacOptions ++= strict, tests,
+    libraryDependencies += munit, Test / fork := true,
+    Test / javaOptions += s"-Dokay.agent.programs=${(baseDirectory.value / "programs").getAbsolutePath}",
+    Compile / run / mainClass := Some("okay.safe.Launch"), run / fork := true,
+    run / javaOptions ++= Seq("-Dokay.safe.unsealed=the agents' gate, run from sbt",
+      "-Dokay.safe.entry=okay.agent.host.Cli"),
+    run / baseDirectory := (LocalRootProject / baseDirectory).value)

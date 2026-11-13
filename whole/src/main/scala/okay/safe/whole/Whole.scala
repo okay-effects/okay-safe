@@ -115,8 +115,12 @@ object Whole:
             report(pos, "not compiled in safe mode: no `import language.experimental.safe`")
           if !cc then report(pos, "not capture checked")
           if policy.explicitNulls && !nulls then report(pos, "not compiled with explicit nulls (-Yexplicit-nulls)")
-        if policy.isKernel(unitPkg) then
-          report(pos, s"declares into the kernel's package $unitPkg: its package-private parts are open there")
+        // every package clause of the unit, the nested ones too: `package a.b { ... }` inside a file of another
+        def packages(tree: Tree): List[(String, Position)] = tree match
+          case p @ PackageClause(pid, stats) => (path(pid.symbol), p.pos) :: stats.flatMap(packages)
+          case _ => Nil
+        for (p, at) <- packages(tasty.ast) if policy.isKernel(p) do
+          report(at, s"declares into the kernel's package $p: its package-private parts are open there")
 
         def named(sym: Symbol, at: Position): Unit =
           if !sym.isNoSymbol && !sym.isPackageDef then
@@ -155,8 +159,10 @@ object Whole:
             case t: Try if !isHost =>
               report(t.pos, "try: an exception caught is an effect unsaid; a failure is an effect (Throws)")
               traverseTreeChildren(tree)(owner)
-            case a @ Apply(fun, _) if !isHost && fun.symbol.name == "throw" && path(fun.symbol.owner) == "" =>
-              report(a.pos, "throw: an exception is an effect unsaid; a failure is an effect (Throws)")
-              traverseTreeChildren(tree)(owner)
+            // `throw` is a method of the compiler's own `<special-ops>`
+            case Apply(fun, args) if fun.symbol.name == "throw" && path(fun.symbol.owner) == "<special-ops>" =>
+              if !isHost then
+                report(tree.pos, "throw: an exception is an effect unsaid; a failure is an effect (Throws)")
+              args.foreach(traverseTree(_)(owner))
             case _ => traverseTreeChildren(tree)(owner)
         walk.traverseTree(tasty.ast)(Symbol.spliceOwner)

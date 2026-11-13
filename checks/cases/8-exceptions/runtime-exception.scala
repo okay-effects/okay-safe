@@ -4,7 +4,7 @@ import language.experimental.safe
 import okay.safe.*
 
 object Thrown:
-  // whole: throw
+  // whole: throw: an exception is an effect unsaid
   val p: Int ! Pure = pure[Int, Pure](1).flatMap(x => if x > 0 then throw IllegalStateException("x") else pure(x))
   def caught(f: Int -> Int): Int = try f(1) catch case _: RuntimeException => 0 // whole: try
   def partial: Int = ??? // whole: scala.Predef.???
