@@ -263,7 +263,8 @@ class Properties extends munit.FunSuite:
   test("a program with no declared type: of one effect it is that effect's; of more, the row is said once"):
     assertEquals(run(Choose.all(Choose.among(1, 2).map(_ + 1))), List(2, 3))
     assertEquals(run(State.run(1)(for s <- State.get[Int]; _ <- State.put(s + 1) yield s)), (2, 1))
-    val unsaid: String = compileErrors("run(Choose.all(State.run(0)(for x <- Choose.among(1, 2); _ <- State.put(x) yield x)))")
+    val unsaid: String =
+      compileErrors("run(Choose.all(State.run(0)(for x <- Choose.among(1, 2); _ <- State.put(x) yield x)))")
     assert(unsaid.contains("the effect Choose is not in the row State % Int. If this row was not said"), unsaid)
     val declared: Int ! Chosen = for x <- Choose.among(1, 2); _ <- State.put(x) yield x
     assertEquals(run(Choose.all(State.run(0)(declared))), List((1, 1), (2, 2)))

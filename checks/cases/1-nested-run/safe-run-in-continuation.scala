@@ -5,4 +5,5 @@ import okay.safe.*
 
 object Nested:
   def p(using Runner): Int ! Pure =
-    pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x)))) // error: Cannot refer to method run in the top-level definitions in package safe from safe code since it is neither compiled in safe mode nor tagged with @assumedSafe
+    // error: Cannot refer to method run in the top-level definitions in package safe from safe code since it is
+    pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x))))

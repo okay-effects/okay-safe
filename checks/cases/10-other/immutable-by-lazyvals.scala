@@ -5,5 +5,7 @@ import language.experimental.safe
 
 object Rewrite:
   def rewrite(xs: List[Int], tail: List[Int]): Boolean =
-    val offset = scala.runtime.LazyVals.getOffset(classOf[::[?]], "next") // whole: scala.runtime.LazyVals.getOffset: it is not on the allowlist
-    scala.runtime.LazyVals.objCAS(xs, offset, xs.tail, tail) // whole: scala.runtime.LazyVals.objCAS: it is not on the allowlist
+    // whole: scala.runtime.LazyVals.getOffset: it is not on the allowlist
+    val offset = scala.runtime.LazyVals.getOffset(classOf[::[?]], "next")
+    // whole: scala.runtime.LazyVals.objCAS: it is not on the allowlist
+    scala.runtime.LazyVals.objCAS(xs, offset, xs.tail, tail)

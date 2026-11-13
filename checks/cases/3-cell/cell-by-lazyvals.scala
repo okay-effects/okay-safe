@@ -9,4 +9,5 @@ object Unsafe:
     val offset = scala.runtime.LazyVals.getOffset(classOf[Cell[?]], "state")
     val was: Integer = cell.get
     val now: Integer = 99
-    scala.runtime.LazyVals.objCAS(cell, offset, was, now) // error: Note that capability `cell.rd` cannot flow into capture set {}
+    // error: Note that capability `cell.rd` cannot flow into capture set {}
+    scala.runtime.LazyVals.objCAS(cell, offset, was, now)

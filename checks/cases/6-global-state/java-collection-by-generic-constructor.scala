@@ -6,4 +6,5 @@ import language.experimental.safe
 
 object Global:
   val counts = java.util.HashMap[String, Integer]() // whole: java.util.HashMap: it is not on the allowlist
-  val count: String -> Int = key => counts.merge(key, 1, (a, b) => a + b) // whole: java.util.HashMap.merge: it is not on the allowlist
+  // whole: java.util.HashMap.merge: it is not on the allowlist
+  val count: String -> Int = key => counts.merge(key, 1, (a, b) => a + b)

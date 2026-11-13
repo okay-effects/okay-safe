@@ -8,5 +8,6 @@ import okay.safe.*
 
 object Nested:
   def go(using r: Runner): Int =
-    val p: Int ! Pure = pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x)))) // error: Note that capability `r` cannot flow into capture set {}
+    // error: Note that capability `r` cannot flow into capture set {}
+    val p: Int ! Pure = pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x))))
     run(p)

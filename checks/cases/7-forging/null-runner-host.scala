@@ -8,4 +8,5 @@ import language.experimental.captureChecking
 import okay.safe.*
 
 object Forged:
-  val p: Int ! Pure = pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x))(using null))) // error: Found:    Null
+  // error: Found:    Null
+  val p: Int ! Pure = pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x))(using null)))

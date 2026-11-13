@@ -41,8 +41,8 @@ lazy val whole = (project in file("whole"))
 /** THE GUARANTEES, TESTED: code that must not compile (each with the error expected), code that must, code that
  * compiles and the whole-program check refuses; and the checks of last resort, at run time */
 lazy val checks = (project in file("checks")).dependsOn(core, example, whole)
-  .settings(name := "okay-safe-checks", publish / skip := true, scalacOptions ++= strict, tests, libraryDependencies ++= Seq(munit,
-      "org.scala-lang" %% "scala3-compiler" % scala3 % Test),
+  .settings(name := "okay-safe-checks", publish / skip := true, scalacOptions ++= strict, tests,
+    libraryDependencies ++= Seq(munit, "org.scala-lang" %% "scala3-compiler" % scala3 % Test),
     Test / fork := true,
     Test / javaOptions ++= {
       val cp = ((example / Compile / fullClasspath).value.files ++ (core / Compile / fullClasspath).value.files)

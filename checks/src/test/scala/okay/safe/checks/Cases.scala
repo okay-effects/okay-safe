@@ -15,14 +15,15 @@ import okay.safe.whole.{Finding, Policy, Whole}
 /*
  * THE CASES: source files compiled by the compiler itself, as an application would compile them — every phase,
  * capture checking and safe mode included (a `compileErrors` stops after typing). A case says what it expects on the
- * line it expects it:
+ * line it expects it, or alone on the line before it:
  *
  *   // error: <part of the message>    the compiler reports an error here
  *   // whole: <part of the message>    it compiles, and the whole-program check reports this here
  *
- * and in its first lines `//> flags: <options>` for the compiler, `//> host: <packages>` for the check. A case with
- * an `error` must report those errors, and none on a line that expects none; a case with none must compile with no error, and the
- * whole-program check must report its `whole` lines, and nothing on a line that expects nothing.
+ * and in its first lines `//> flags: <options>` for the compiler, `//> host: <packages>` for the check,
+ * `//> require: explicit-nulls` for the policy. A case with an `error` must report those errors, and none on a line
+ * that expects none; a case with none must compile with no error, and the whole-program check must report its
+ * `whole` lines, and nothing on a line that expects nothing.
  */
 object Cases:
   val classpath: String = sys.props("okay.safe.classpath")
@@ -32,9 +33,10 @@ object Cases:
   final case class Reported(file: String, line: Int, level: Int, text: String)
 
   def expectations(file: Path): List[Expected] =
-    val Mark = """.*//\s*(error|whole):\s*(.+)$""".r
-    Files.readAllLines(file).asScala.toList.zipWithIndex.collect { case (Mark(kind, text), i) =>
-      Expected(file.getFileName.toString, i + 1, kind, text.trim)
+    val Mark = """(.*)//\s*(error|whole):\s*(.+)$""".r
+    Files.readAllLines(file).asScala.toList.zipWithIndex.collect { case (Mark(code, kind, text), i) =>
+      // a mark alone on its line is of the line after it
+      Expected(file.getFileName.toString, if code.isBlank then i + 2 else i + 1, kind, text.trim)
     }
 
   def header(file: Path, name: String): List[String] =

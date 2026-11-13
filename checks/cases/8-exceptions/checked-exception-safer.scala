@@ -8,4 +8,5 @@ class Refused extends Exception("refused")
 
 object Checked:
   def p(using CanThrow[Refused]): Int ! Pure =
-    pure[Int, Pure](1).flatMap(x => if x > 0 then throw Refused() else pure(x)) // error: cannot flow into capture set {}
+    // error: cannot flow into capture set {}
+    pure[Int, Pure](1).flatMap(x => if x > 0 then throw Refused() else pure(x))

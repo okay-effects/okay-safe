@@ -9,4 +9,5 @@ import okay.safe.example.host.BankClient
 
 object Bypass:
   def p(client: BankClient): Unit ! Pure =
-    pure[Int, Pure](1).flatMap(x => pure(client.transfer("company", "me", x))) // error: Note that capability `client` cannot flow into capture set {}
+    // error: Note that capability `client` cannot flow into capture set {}
+    pure[Int, Pure](1).flatMap(x => pure(client.transfer("company", "me", x)))

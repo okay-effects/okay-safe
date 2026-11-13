@@ -68,7 +68,8 @@ object Whole:
           if n.endsWith("$package") || n == "package" then names(s.owner) else n :: names(s.owner)
       def path(s: Symbol): String = names(s).reverse.mkString(".")
       /** the annotations the compiler puts on the types it infers */
-      def internal(p: String): Boolean = p.startsWith("scala.caps.internal.") || p.startsWith("scala.annotation.internal.")
+      def internal(p: String): Boolean =
+        p.startsWith("scala.caps.internal.") || p.startsWith("scala.annotation.internal.")
       def pkg(s: Symbol): Symbol = if s.isNoSymbol || s.isPackageDef then s else pkg(s.owner)
       def topLevel(s: Symbol): Symbol =
         if s.isNoSymbol || s.owner.isNoSymbol || s.owner.isPackageDef then s else topLevel(s.owner)
@@ -101,7 +102,8 @@ object Whole:
         val (cc, nulls) = attributes.getOrElse(file, (false, false))
         val pos = tasty.ast.pos
         if !isHost then
-          if !safeImport(tasty.ast) then report(pos, "not compiled in safe mode: no `import language.experimental.safe`")
+          if !safeImport(tasty.ast) then
+            report(pos, "not compiled in safe mode: no `import language.experimental.safe`")
           if !cc then report(pos, "not capture checked")
           if policy.explicitNulls && !nulls then report(pos, "not compiled with explicit nulls (-Yexplicit-nulls)")
           if policy.isKernel(unitPkg) then

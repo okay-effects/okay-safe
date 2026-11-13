@@ -8,5 +8,7 @@ object Counter extends caps.Mutable:
   update def bump(): Unit = n += 1
 
 object Use:
-  def eager(): Int = { Counter.bump(); Counter.n } // error: Reference `global.Counter` is not included in the allowed capture set {}
-  val f: Int -> Int = x => { Counter.bump(); x } // error: Reference `global.Counter` is not included in the allowed capture set {}
+  // error: Reference `global.Counter` is not included in the allowed capture set {}
+  def eager(): Int = { Counter.bump(); Counter.n }
+  // error: Reference `global.Counter` is not included in the allowed capture set {}
+  val f: Int -> Int = x => { Counter.bump(); x }

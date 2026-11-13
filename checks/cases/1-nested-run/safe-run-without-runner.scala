@@ -3,4 +3,5 @@ import language.experimental.safe
 import okay.safe.*
 
 object Nested:
-  val p: Int ! Pure = pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x)))) // error: No given instance of type okay.safe.Runner
+  // error: No given instance of type okay.safe.Runner
+  val p: Int ! Pure = pure[Int, Pure](1).flatMap(x => pure(run(pure[Int, Pure](x))))
