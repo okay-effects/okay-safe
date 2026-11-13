@@ -47,6 +47,11 @@ object Cases:
       val (file, line) = if d.pos.exists then (d.pos.source.file.name, d.pos.line + 1) else ("", 0)
       all += Reported(file, line, d.level, d.message)
 
+  /** the counts at the end of a run, and -Werror's own line: no diagnostic of their own */
+  def summary(text: String): Boolean =
+    text.linesIterator.forall(_.trim.matches("""\d+ (errors?|warnings?) found""")) ||
+      text == "No warnings can be incurred under -Werror"
+
   /** A CASE: one file, or a directory of files, each its own compilation run in the order of their names — so a
    * dependency compiled one way is on the class path of a program compiled another */
   final case class Case(name: String, files: List[Path]):
@@ -59,8 +64,7 @@ object Cases:
         classpath + File.pathSeparator + out) ++ header(file, "flags") :+ file.toString
       val reporter = Collect()
       Driver().process(args.toArray, reporter): Unit
-      reporter.all.toList.filter(r => (r.level == ERROR || r.level == WARNING) && !r.text.matches("\\w+ (errors?|warnings?) found") &&
-        r.text != "No warnings can be incurred under -Werror")
+      reporter.all.toList.filter(r => (r.level == ERROR || r.level == WARNING) && !summary(r.text))
     }
 
     def whole(out: Path): List[Finding] =
