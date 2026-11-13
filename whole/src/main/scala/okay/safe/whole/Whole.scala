@@ -108,10 +108,9 @@ object Whole:
         def named(sym: Symbol, at: Position): Unit =
           if !sym.isNoSymbol && !sym.isPackageDef then
             val top = topLevel(sym)
-            if own(path(top)) then
-              if !isHost && policy.isHost(path(pkg(top))) then report(at, s"a program names the host: ${path(sym)}")
-            else if !isHost then
-              policy.refused(path(sym)).foreach(why => report(at, s"${path(sym)}: $why"))
+            if !isHost && policy.isHost(path(pkg(top))) then report(at, s"a program names the host: ${path(sym)}")
+            else if !own(path(top)) && !isHost then
+              policy.refused(path(sym), path(pkg(top))).foreach(why => report(at, s"${path(sym)}: $why"))
 
         object walk extends TreeTraverser:
           override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match

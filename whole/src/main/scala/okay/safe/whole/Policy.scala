@@ -11,10 +11,12 @@ package okay.safe.whole
 final case class Policy(allow: List[String], deny: Map[String, String], kernel: List[String], host: List[String],
     explicitNulls: Boolean):
 
-  /** why `path` may not be named; None when it may */
-  def refused(path: String): Option[String] =
+  /** why `path`, of the package `pkg`, may not be named; None when it may. The kernel's packages are allowed, not
+   * the packages under them */
+  def refused(path: String, pkg: String): Option[String] =
     deny.collectFirst { case (entry, why) if matches(entry, path) => why }
-      .orElse(if allow.exists(matches(_, path)) then None else Some("it is not on the allowlist"))
+      .orElse(if allow.exists(matches(_, path)) || kernel.contains(pkg) then None
+        else Some("it is not on the allowlist"))
 
   private def matches(entry: String, path: String): Boolean =
     if entry.startsWith("*.") then path.endsWith(entry.drop(1)) || path == entry.drop(2)
@@ -42,8 +44,7 @@ object Policy:
       "java.lang.Enum", "java.lang.Record", "java.lang.Throwable", "java.lang.Exception", "java.lang.RuntimeException",
       "java.lang.IllegalArgumentException", "java.lang.IllegalStateException", "java.lang.IndexOutOfBoundsException",
       "java.lang.UnsupportedOperationException", "java.lang.Class.getName", "java.lang.Class.getSimpleName",
-      "java.math", "java.util.function", "java.util.Objects", "java.util.Optional", "java.time",
-      "okay.safe") ++ direct,
+      "java.math", "java.util.function", "java.util.Objects", "java.util.Optional", "java.time") ++ direct,
     deny = Map(
       "scala.Any.asInstanceOf" -> "a cast forges any type, a capability's too",
       "scala.Predef.println" -> "it writes to the console: an ambient effect",

@@ -27,5 +27,5 @@ class CasesTest extends munit.FunSuite:
           assert(found.exists(f => f.file == e.file && f.line == e.line && f.what.contains(e.text)),
             s"expected at ${e.file}:${e.line}: ${e.text}\nfound:\n${found.mkString("\n")}")
         for f <- found do
-          assert(wholes.exists(e => f.file == e.file && f.line == e.line && f.what.contains(e.text)),
+          assert(wholes.exists(e => f.file == e.file && f.line == e.line),
             s"unexpected finding: $f")

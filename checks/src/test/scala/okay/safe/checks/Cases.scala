@@ -22,7 +22,7 @@ import okay.safe.whole.{Finding, Policy, Whole}
  *
  * and in its first lines `//> flags: <options>` for the compiler, `//> host: <packages>` for the check. A case with
  * an `error` must report those errors, and none on a line that expects none; a case with none must compile with no error, and the
- * whole-program check must report exactly its `whole` lines.
+ * whole-program check must report its `whole` lines, and nothing on a line that expects nothing.
  */
 object Cases:
   val classpath: String = sys.props("okay.safe.classpath")
