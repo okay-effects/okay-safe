@@ -19,8 +19,11 @@ val strict = Seq("-experimental", "-deprecation", "-feature", "-unchecked", "-We
 
 val munit = "org.scalameta" %% "munit" % "1.3.6" % Test
 
+/** munit registers its tests by lambdas that close over the suite while it is built: -Wsafe-init warns of each */
+val tests = Test / scalacOptions -= "-Wsafe-init"
+
 /** THE KERNEL: rows, programs as data, handlers, the CEK machine, the audit; the standard effects */
 lazy val core = (project in file("core"))
-  .settings(name := "okay-safe", scalacOptions ++= strict, libraryDependencies += munit)
+  .settings(name := "okay-safe", scalacOptions ++= strict, libraryDependencies += munit, tests)
 
 lazy val root = (project in file(".")).aggregate(core).settings(publish / skip := true)
