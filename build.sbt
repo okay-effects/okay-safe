@@ -26,7 +26,7 @@ val tests = Test / scalacOptions -= "-Wsafe-init"
 lazy val core = (project in file("core"))
   .settings(name := "okay-safe", scalacOptions ++= strict, libraryDependencies += munit, tests)
 
-lazy val root = (project in file(".")).aggregate(core, example, whole, checks).settings(publish / skip := true)
+lazy val root = (project in file(".")).aggregate(core, example, whole, checks, bench).settings(publish / skip := true)
 
 /** AN APPLICATION: a bank's programs in safe mode, its client and handler at the host's edge */
 lazy val example = (project in file("example")).dependsOn(core)
@@ -49,3 +49,10 @@ lazy val checks = (project in file("checks")).dependsOn(core, example, whole)
         .distinct.map(_.getAbsolutePath).mkString(java.io.File.pathSeparator)
       Seq(s"-Dokay.safe.classpath=$cp", s"-Dokay.safe.cases=${(baseDirectory.value / "cases").getAbsolutePath}")
     })
+
+/** THE BENCHMARK, against okay-scala 0.1.1 from its Pages repository: `sbt bench/run`, and `inside` at -Xss512k */
+lazy val bench = (project in file("bench")).dependsOn(core)
+  .settings(name := "okay-safe-bench", publish / skip := true, scalacOptions ++= strict,
+    resolvers += "okay-scala releases" at "https://okay-effects.github.io/okay-scala/maven",
+    libraryDependencies += "io.github.okay-effects" %% "okay-scala" % "0.1.1",
+    run / fork := true, run / javaOptions ++= Seq("-Xmx2g"))
