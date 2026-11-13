@@ -55,4 +55,6 @@ lazy val bench = (project in file("bench")).dependsOn(core)
   .settings(name := "okay-safe-bench", publish / skip := true, scalacOptions ++= strict,
     resolvers += "okay-scala releases" at "https://okay-effects.github.io/okay-scala/maven",
     libraryDependencies += "io.github.okay-effects" %% "okay-scala" % "0.1.1",
-    run / fork := true, run / javaOptions ++= Seq("-Xmx2g"))
+    Compile / run / mainClass := Some("okay.safe.Launch"), run / fork := true,
+    run / javaOptions ++= Seq("-Xmx2g", "-Dokay.safe.unsealed=the benchmark",
+      "-Dokay.safe.entry=okay.safe.bench.Bench"))

@@ -12,15 +12,24 @@ import language.experimental.captureChecking
 
 /** THE AUTHORITY TO RUN PROGRAMS: a capability. `run` and `step` ask it; a continuation is a pure function
  * (`X -> B ! R`), so one that would run a program with it does not compile: "Found: ... ->{runner} ...,
- * Required: ... -> ...". Only `Runner.host` makes one, for its body, and the body cannot return it. */
+ * Required: ... -> ...". It is GIVEN, NEVER MADE: its constructor and `Runner.host` are the kernel's, and the one
+ * place that calls them is `Launch`, the application's entry, which gives a runner once to an `Entry`. So host code
+ * has no runner but the one its entry was given — a host continuation that would make its own does not compile:
+ * there is nothing to call. */
 final class Runner private () extends caps.SharedCapability
 
 object Runner:
-  /** a runner for `body`: the host's edge, where programs are run */
-  def host[A](body: Runner ?=> A): A = body(using Runner())
+  /** a runner for `body`: the kernel's, for `Launch` and the kernel's own tests */
+  private[safe] def host[A](body: Runner ?=> A): A = body(using Runner())
+
+/** AN APPLICATION'S ENTRY: the host's code, given the runner once, by `Launch` — `object App extends Entry`. The
+ * one place a host gets a runner; capture checked, it cannot hand it to a program's continuation. */
+trait Entry:
+  def run(args: List[String])(using Runner): Unit
 
 /** A run begun inside another run on the same thread: refused at run time (`Machine.run`). What a host not written
- * with capture checking, or a `Runner.host` inside a continuation, can still do; the types refuse it elsewhere. */
+ * with capture checking can still do — run a program with its runner inside a continuation —; the types refuse it
+ * elsewhere. */
 final class NestedRun extends RuntimeException(
   "a program was run inside a running program: a continuation or a handler's clause ran the machine again")
 
@@ -31,4 +40,3 @@ def step[R[_], A](p: A ! R)(using Runner): Step[R, A] = Machine.run(p)
 def run[A](p: A ! Pure)(using Runner): A = step(p) match
   case Step.Done(a) => a
   case Step.Asked(_, op, _) => throw NoHandler(op)
-

@@ -1,7 +1,7 @@
-// The host, capture checked, calls the client from a program's continuation instead of from its handler: the
-// continuation would capture the client.
-//> host: host
-package host
+// The host itself — its own package, where the client's API is open —, capture checked, calls the client from a
+// program's continuation instead of from its handler: the continuation would capture the client.
+//> host: okay.safe.example.host
+package okay.safe.example.host.bypass
 
 import language.experimental.captureChecking
 import okay.safe.*

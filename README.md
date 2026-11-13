@@ -39,14 +39,16 @@ import okay.safe.std.*
 def tick[R[_]: Has[State % Int]]: Int ! R = State.get[Int].flatMap(n => State.put(n + 1).map(_ => n))
 ```
 
-The host, the one place a program is run (capture checked, not safe mode):
+The host, the one place a program is run (capture checked, not safe mode): its entry is given the runner once, by
+the kernel's `okay.safe.Launch` — a runner is never made anywhere else:
 
 ```scala
 import language.experimental.captureChecking
 import okay.safe.*
 
-@main def app(): Unit = Runner.host:
-  println(run(State.run(0)(tick[State % Int])))
+object App extends Entry:
+  def run(args: List[String])(using Runner): Unit =
+    println(okay.safe.run(State.run(0)(tick[State % Int])))
 ```
 
 A handler that holds an authority (a client, a connection) is made in the host with `Authority`; a sensitive effect

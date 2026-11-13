@@ -22,11 +22,12 @@ enum Ask[X]:
 class RuntimeTest extends munit.FunSuite:
 
   test("1. a run inside a running program is refused at run time: NestedRun"):
-    // a host not capture checked, or one that makes its own runner inside a continuation: the types let it through
-    val inner: Int => Int ! Pure = x => pure(Runner.host(run(pure[Int, Pure](x + 1))))
-    intercept[NestedRun](Runner.host(run(pure[Int, Pure](1).flatMap(inner)))): Unit
+    // a host not capture checked runs a program with its runner inside a continuation: the types let it through
+    hosted:
+      val inner: Int => Int ! Pure = x => pure(run(pure[Int, Pure](x + 1)))
+      intercept[NestedRun](run(pure[Int, Pure](1).flatMap(inner))): Unit
     // and the thread is left able to run: the flag is reset
-    assertEquals(Runner.host(run(pure[Int, Pure](1).flatMap(x => pure(x + 1)))), 2)
+    assertEquals(hosted(run(pure[Int, Pure](1).flatMap(x => pure(x + 1)))), 2)
 
   test("2. k kept after its handler returned is a value: resumed later, many times, nothing replayed"):
     val prefix = AtomicInteger()
@@ -38,10 +39,10 @@ class RuntimeTest extends munit.FunSuite:
     val h = Handler.control[Ask, Pure, Int, Out](a => pure(Left(a)))(
       [X] => (op: Ask[X], k: Continuation[X, Pure, Out]) => op match
         case Ask.Number() => pure(Right(k)))
-    val k = Runner.host(run(handle(p, h))) match
+    val k = hosted(run(handle(p, h))) match
       case Right(k) => k
       case Left(a) => fail(s"no question: $a")
-    val answers = Runner.host(List(5, 7, 5).map(n => run(k(n))))
+    val answers = hosted(List(5, 7, 5).map(n => run(k(n))))
     assertEquals(answers, List(Left(55), Left(77), Left(55)))
     assertEquals(prefix.get, 1)
 
@@ -53,12 +54,12 @@ class RuntimeTest extends munit.FunSuite:
 
   test("4. the bank: only its handler reaches the client, and only what the audit passed"):
     val client = BankClient(Map("company" -> 1000L))
-    val (trail, result) = Runner.host(BankHost.payroll(client, 500, List("ann" -> 300L, "bob" -> 600L)))
+    val (trail, result) = hosted(BankHost.payroll(client, 500, List("ann" -> 300L, "bob" -> 600L)))
     assertEquals(result, Left("over the limit: 600"))
     assertEquals(trail.last, "refused: 600 from company to bob")
     // balance, transfer to ann, balance: the refused transfer never reached the client
-    assertEquals(client.calls, 3)
-    assertEquals(client.balance("bob"), 0L)
+    assertEquals(BankHost.calls(client), 3)
+    assertEquals(BankHost.holds(client, "bob"), 0L)
 
   /** the kernel as an explicit module: `okay.safe` and `okay.safe.std` exported, nothing opened */
   def kernelModule(): Path =

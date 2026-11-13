@@ -81,8 +81,8 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest).
 | # | violation | compile time | whole-program | run time | case / test |
 |---|---|---|---|---|---|
 | 1 | run inside a continuation, program in safe mode | SM: `run` not nameable; typer: no `Runner` | WP: `okay.safe.run` denied | `NestedRun` | safe-run-in-continuation, safe-run-without-runner |
-| 1 | host (CC) continuation captures the host's runner | CC: `capability r cannot flow into capture set {}` | host exempt | `NestedRun` | host-continuation-captures-runner |
-| 1 | host continuation makes its own `Runner.host` | — (a pure static method) | host exempt | `NestedRun` | host-runner-made-in-continuation; RuntimeTest 1 |
+| 1 | host (CC) continuation captures its entry's runner | CC: `capability r cannot flow into capture set {}` | host exempt | `NestedRun` | host-continuation-captures-runner |
+| 1 | host continuation makes its own runner | access: `Runner`'s constructor private, `Runner.host` and `Launch` the kernel's — a runner is given once, to the `Entry` | host exempt | `NestedRun` | host-runner-made-in-continuation |
 | 1 | host forges a runner with `null` | `-Yexplicit-nulls`: `Found: Null` | — | `NestedRun` | null-runner-host, null-runner-without-explicit-nulls |
 | 2 | `k` into a variable the clause closes over | CC (nightly only) | — | — | k-into-captured-var |
 | 2 | `k` into a global variable | CC: a class with a `var` must be `Stateful`/`Mutable` | — | — | k-into-global-var |
@@ -90,14 +90,15 @@ or its test in `checks/src/test` (RuntimeTest, WholeTest).
 | 2 | `k` returned after its handler returned | allowed by design: `k` is immutable data | — | resumed thrice, prefix ran once | k-returned-is-a-value; RuntimeTest 2 |
 | 3 | cell kept in a captured variable | CC (nightly only) | — | — | cell-into-var |
 | 3 | cell made, or its state written, outside the kernel | access: `private[safe]` | — | — | cell-made-outside |
-| 3 | cell written through a read-only reference | CC: `Cannot call update method set` | — | — | cell-escaped-is-read-only |
-| 3 | cell given away as an answer, returned from the run | **— (escapes read-only)** | — | — | cell-as-answer |
+| 3 | cell read or written through a read-only reference | CC: `Cannot call update method get/set` — both are update methods | — | — | cell-escaped-is-read-only |
+| 3 | cell given away as an answer, read later | CC: it escapes read-only, and a read-only cell is inert: `Cannot call update method get` | — | — | cell-as-answer |
+| 3 | cell given away typed exclusive (`Leak[Cell[Int]^]`), written later | CC: `any … is not included in the allowed capture set` | — | — | cell-as-exclusive-answer |
 | 3 | cell's state through `package okay.safe` | — | WP: kernel's package | JPMS: split package refused | cell-through-the-kernels-package; RuntimeTest JPMS |
 | 3 | cell's state by `LazyVals.objCAS` | CC: a cell is no pure `Object` | WP | `--sun-misc-unsafe-memory-access=deny` | cell-by-lazyvals |
 | 3 | cell's state by reflection | SM: `getDeclaredField` rejected | WP | JPMS: `InaccessibleObjectException` | reflection; RuntimeTest JPMS |
-| 4 | program given the client calls it eagerly | **SM does not check instance members** | WP: "a program names the host" | — | program-names-the-client |
-| 4 | program calls the client in a continuation | CC: `capability client cannot flow…` | WP | — | program-continuation-calls-the-client |
-| 4 | host calls the client in a continuation | CC | host exempt | — | host-continuation-calls-the-client |
+| 4 | program given the client calls it eagerly | access: the client's API is `private[host]` — `cannot be accessed as a member` | WP: "a program names the host" | — | program-names-the-client |
+| 4 | program calls the client in a continuation | access, and CC: `capability client cannot flow…` | WP | — | program-continuation-calls-the-client |
+| 4 | host, in its own package, calls the client in a continuation | CC | host exempt | — | host-continuation-calls-the-client |
 | 4 | program handles the sensitive effect itself | macro: `the effect Bank is sensitive` | — | — | program-handles-the-bank |
 | 4 | handler put where the audit should be | rows: `is not in the row` | — | — | handled-without-its-audit |
 | 4 | program makes the authority-holding handler | SM: `Authority` | WP | — | handler-made-in-the-program |

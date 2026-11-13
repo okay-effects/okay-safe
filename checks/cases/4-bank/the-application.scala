@@ -7,8 +7,8 @@ import language.experimental.captureChecking
 import okay.safe.*
 import okay.safe.example.host.{BankClient, BankHost}
 
-object App:
-  def main(args: Array[String]): Unit =
+object App extends Entry:
+  def run(args: List[String])(using Runner): Unit =
     val client = BankClient(Map("company" -> 100L))
-    val (_, result) = Runner.host(BankHost.payroll(client, 50, List("ann" -> 40L, "bob" -> 70L)))
+    val (_, result) = BankHost.payroll(client, 50, List("ann" -> 40L, "bob" -> 70L))
     assert(result == Left("over the limit: 70"))

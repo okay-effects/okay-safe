@@ -119,9 +119,12 @@ abstract class Continuation[-X, R[_], +B] private[safe] () extends Function1[X, 
   /** how many levels it holds: what the tests count, of a loop that must gather none */
   private[safe] def levels: Int
 
-/** A handler's state, read and written by its clause while it answers. */
+/** A handler's state, read and written by its clause while it answers. Both are UPDATE methods: they ask the
+ * exclusive reference, which only the clause holds (`Cell[S]^`). A cell that leaves its clause — an answer, a
+ * type argument — leaves read-only, and a read-only cell can be neither read nor written: what escapes is inert,
+ * an identity with no state to show (docs/research.md, threat 3). */
 abstract class Cell[S] private[safe] (private[safe] var state: S) extends caps.Mutable:
-  final def get: S = state
+  update final def get: S = state
   update final def set(s: S): Unit = state = s
 
 /** A HANDLER of the effect `E`, the row outside it `R`, in a program of an `A`: a `B`. The machine has two shapes.

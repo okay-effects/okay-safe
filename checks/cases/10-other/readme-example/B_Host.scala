@@ -7,5 +7,6 @@ import okay.safe.*
 import okay.safe.std.*
 import readme.tick
 
-@main def app(): Unit = Runner.host:
-  println(run(State.run(0)(tick[State % Int])))
+object App extends Entry:
+  def run(args: List[String])(using Runner): Unit =
+    println(okay.safe.run(State.run(0)(tick[State % Int])))

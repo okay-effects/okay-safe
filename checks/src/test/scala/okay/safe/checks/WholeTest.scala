@@ -18,6 +18,6 @@ class WholeTest extends munit.FunSuite:
   test("the host held to the rules of programs: everything a host does is found"):
     val found = Whole.check(List(example), trusted, Policy.default).map(_.toString)
     for what <- List("BankHost.scala:1: not compiled in safe mode", "okay.safe.Authority.tail", "okay.safe.run:",
-        "okay.safe.Runner.host", "scala.Predef.println", "java.util.concurrent.ConcurrentHashMap") do
+        "scala.Predef.println", "java.util.concurrent.ConcurrentHashMap") do
       assert(found.exists(_.contains(what)), s"$what not in\n${found.mkString("\n")}")
     assert(!found.exists(_.startsWith("Bank.scala")), found.mkString("\n"))
