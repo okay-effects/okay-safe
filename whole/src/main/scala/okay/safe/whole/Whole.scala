@@ -70,6 +70,12 @@ object Whole:
       /** the annotations the compiler puts on the types it infers */
       def internal(p: String): Boolean =
         p.startsWith("scala.caps.internal.") || p.startsWith("scala.annotation.internal.")
+      /** what the compiler puts on a type it infers, beside those: a stable path, a variance it has checked */
+      def insertedInInferred(p: String): Boolean =
+        p == "scala.annotation.unchecked.uncheckedStable" || p == "scala.annotation.unchecked.uncheckedVariance"
+      def inferred(t: Tree): Boolean = t match
+        case Inferred() => true
+        case _ => false
       def pkg(s: Symbol): Symbol = if s.isNoSymbol || s.isPackageDef then s else pkg(s.owner)
       def topLevel(s: Symbol): Symbol =
         if s.isNoSymbol || s.owner.isNoSymbol || s.owner.isPackageDef then s else topLevel(s.owner)
@@ -138,7 +144,7 @@ object Whole:
               def annotations(tpe: TypeRepr): Unit = tpe match
                 case AnnotatedType(under, annot) =>
                   val sym = annot.tpe.typeSymbol
-                  if !internal(path(sym)) then named(sym, t.pos)
+                  if !internal(path(sym)) && !(inferred(t) && insertedInInferred(path(sym))) then named(sym, t.pos)
                   annotations(under)
                 case _ => ()
               annotations(t.tpe)
