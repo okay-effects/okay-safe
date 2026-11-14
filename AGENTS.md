@@ -11,7 +11,7 @@ What is usable today, honestly:
 
 - NOT released: version `0.1.0-SNAPSHOT`, no published artifact, no dependency line in the README. Clone
   https://github.com/okay-effects/okay-safe and build with sbt (`sbt test`); the kernel is the module `core`
-  (artifact name `okay-safe`, package `okay.safe`). It depends on okay-audit 0.1.1 (resolver
+  (artifact name `okay-safe`, package `okay.safe`). It depends on okay-audit 0.1.2 (resolver
   https://okay-effects.github.io/okay/maven).
 - It needs an EXPERIMENTAL compiler: the pinned Scala 3 nightly `3.10.2-RC1-bin-20261113-2905165-NIGHTLY` (resolver
   https://repo.scala-lang.org/artifactory/maven-nightlies), or 3.10.1 (`sbt -Dscala=3.10.1 test`, two cases
@@ -116,7 +116,7 @@ program opens stay in the handler's `Table[K, T]`; the program gets an opaque `I
 - README and research note: https://github.com/okay-effects/okay-safe (`README.md`, `docs/research.md`).
 - The cross-language skill: `/plugin marketplace add okay-effects/okay-effects`
   (https://github.com/okay-effects/okay-effects).
-- okay-audit (used by this repo's gate): `io.github.okay-effects:okay-audit_3:0.1.1` from
+- okay-audit (used by this repo's gate): `io.github.okay-effects:okay-audit_3:0.1.2` from
   https://okay-effects.github.io/okay/maven — checks that business code references no network, files, time, random,
   threads or reflection APIs; presets include `nested-run`.
 
