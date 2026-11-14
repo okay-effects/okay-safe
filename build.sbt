@@ -22,7 +22,7 @@ val munit = "org.scalameta" %% "munit" % "1.3.6" % Test
 /** OKAY-AUDIT (okay's module okay-audit, zero dependencies): the ambient APIs and the effect to use instead, the
  * boundary rule on bytecode, the seal and its verifier — one checker for the family (docs/research.md, "what lives
  * where"). Released 0.1.2 in okay's Maven repository on GitHub Pages */
-val okayAudit = "io.github.okay-effects" %% "okay-audit" % "0.1.2"
+val okayAudit = "io.github.okay-effects" %% "okay-audit" % "0.1.3"
 ThisBuild / resolvers += "okay" at "https://okay-effects.github.io/okay/maven"
 
 /** munit registers its tests by lambdas that close over the suite while it is built: -Wsafe-init warns of each */
